@@ -6,8 +6,13 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		E5CE83F5306D1E80002D4A06 /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = E5CE83F4306D1E80002D4A06 /* .gitignore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		E5CE83D7306D1DCA002D4A06 /* PhotoPurge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhotoPurge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5CE83F4306D1E80002D4A06 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -43,6 +48,7 @@
 		E5CE83CE306D1DCA002D4A06 = {
 			isa = PBXGroup;
 			children = (
+				E5CE83F4306D1E80002D4A06 /* .gitignore */,
 				E5CE83D9306D1DCA002D4A06 /* PhotoPurge */,
 				E5CE83D8306D1DCA002D4A06 /* Products */,
 			);
@@ -114,6 +120,7 @@
 		E5CE83D5306D1DCA002D4A06 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
+				E5CE83F5306D1E80002D4A06 /* .gitignore in Resources */,
 			);
 		};
 /* End PBXResourcesBuildPhase section */
@@ -137,11 +144,11 @@
 				DEVELOPMENT_TEAM = W7Z5X5Z7JR;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PhotoPurge/Info.plist;
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "PhotoPurge needs access to your photos to help you manage and delete them.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
-				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -150,6 +157,9 @@
 				PRODUCT_BUNDLE_IDENTIFIER = adam.org.PhotoPurge;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -165,11 +175,11 @@
 				DEVELOPMENT_TEAM = W7Z5X5Z7JR;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PhotoPurge/Info.plist;
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "PhotoPurge needs access to your photos to help you manage and delete them.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
-				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -178,6 +188,9 @@
 				PRODUCT_BUNDLE_IDENTIFIER = adam.org.PhotoPurge;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
