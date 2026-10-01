@@ -13,6 +13,8 @@
 @property (nonatomic, strong) UILabel *keepBadgeLabel;
 @property (nonatomic, strong) UILabel *deleteBadgeLabel;
 @property (nonatomic, strong) UIView *colorOverlayView;
+@property (nonatomic, strong) UIImpactFeedbackGenerator *feedbackGenerator;
+@property (nonatomic, assign) BOOL hasTriggeredThresholdHaptic;
 
 @end
 
@@ -49,6 +51,10 @@
         [self addSubview:_colorOverlayView];
         
         [self setupBadges];
+        
+        _feedbackGenerator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+        [_feedbackGenerator prepare];
+        _hasTriggeredThresholdHaptic = NO;
         
         UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
         [self addGestureRecognizer:panGesture];
@@ -101,6 +107,8 @@
     switch (gesture.state) {
         case UIGestureRecognizerStateBegan: {
             self.originalCenter = self.center;
+            self.hasTriggeredThresholdHaptic = NO;
+            [self.feedbackGenerator prepare];
             break;
         }
             
@@ -138,6 +146,14 @@
                 self.keepBadgeLabel.alpha = 0.0;
                 self.deleteBadgeLabel.alpha = 0.0;
                 self.colorOverlayView.alpha = 0.0;
+            }
+            
+            if (fabs(translation.x) >= threshold && !self.hasTriggeredThresholdHaptic) {
+                [self.feedbackGenerator impactOccurred];
+                self.hasTriggeredThresholdHaptic = YES;
+            } else if (fabs(translation.x) < threshold) {
+                // Reset flag if user drags back toward center
+                self.hasTriggeredThresholdHaptic = NO;
             }
             break;
         }
@@ -211,6 +227,34 @@
     } completion:^(BOOL finished) {
         [self removeFromSuperview];
         [self.delegate cardViewDidSwipeRight:self];
+    }];
+}
+
+#pragma mark - Programmatic Actions
+
+- (void)swipeLeftProgrammatically {
+    [self.feedbackGenerator impactOccurred];
+    
+    // Reveal purge badge and red tint immediately for animation
+    [UIView animateWithDuration:0.1 animations:^{
+        self.deleteBadgeLabel.alpha = 1.0;
+        self.colorOverlayView.backgroundColor = [UIColor systemRedColor];
+        self.colorOverlayView.alpha = 0.28;
+    } completion:^(BOOL finished) {
+        [self animateOffScreenToLeft];
+    }];
+}
+
+- (void)swipeRightProgrammatically {
+    [self.feedbackGenerator impactOccurred];
+    
+    // Reveal keep badge and green tint immediately for animation
+    [UIView animateWithDuration:0.1 animations:^{
+        self.keepBadgeLabel.alpha = 1.0;
+        self.colorOverlayView.backgroundColor = [UIColor systemGreenColor];
+        self.colorOverlayView.alpha = 0.28;
+    } completion:^(BOOL finished) {
+        [self animateOffScreenToRight];
     }];
 }
 

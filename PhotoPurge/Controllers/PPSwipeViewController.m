@@ -27,6 +27,7 @@
     self.pendingDeletionAssets = [[NSMutableArray alloc] init];
     
     [self loadPhotoLibraryAssets];
+    [self setupActionButtons];
 }
 
 - (void)loadPhotoLibraryAssets {
@@ -168,6 +169,72 @@
     NSLog(@"PhotoPurge: Kept asset %lu.", (unsigned long)self.currentIndex);
     
     [self advanceStack];
+}
+
+#pragma mark - Action Buttons
+
+- (void)setupActionButtons {
+    CGFloat screenWidth = self.view.bounds.size.width;
+    CGFloat screenHeight = self.view.bounds.size.height;
+    
+    // Calculate button geometry based on card bottom position
+    CGRect cardRect = [self cardFrame];
+    CGFloat cardBottom = CGRectGetMaxY(cardRect);
+    CGFloat availableSpace = screenHeight - cardBottom;
+    CGFloat buttonDiameter = 64.0;
+    CGFloat buttonY = cardBottom + (availableSpace - buttonDiameter) / 2.0;
+    
+    // Spacing between the two action buttons
+    CGFloat spacing = 40.0;
+    CGFloat purgeX = (screenWidth / 2.0) - buttonDiameter - (spacing / 2.0);
+    CGFloat keepX = (screenWidth / 2.0) + (spacing / 2.0);
+    
+    // Purge Button (left, red trash icon)
+    UIButton *purgeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    purgeButton.frame = CGRectMake(purgeX, buttonY, buttonDiameter, buttonDiameter);
+    purgeButton.backgroundColor = [UIColor whiteColor];
+    purgeButton.tintColor = [UIColor systemRedColor];
+    purgeButton.layer.cornerRadius = buttonDiameter / 2.0;
+    purgeButton.layer.shadowColor = [UIColor blackColor].CGColor;
+    purgeButton.layer.shadowOpacity = 0.15;
+    purgeButton.layer.shadowRadius = 6.0;
+    purgeButton.layer.shadowOffset = CGSizeMake(0, 3);
+    
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:24 weight:UIImageSymbolWeightBold];
+    UIImage *trashIcon = [UIImage systemImageNamed:@"trash.fill" withConfiguration:config];
+    [purgeButton setImage:trashIcon forState:UIControlStateNormal];
+    
+    [purgeButton addTarget:self action:@selector(purgeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:purgeButton];
+    
+    // Keep Button (right, green checkmark icon)
+    UIButton *keepButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    keepButton.frame = CGRectMake(keepX, buttonY, buttonDiameter, buttonDiameter);
+    keepButton.backgroundColor = [UIColor whiteColor];
+    keepButton.tintColor = [UIColor systemGreenColor];
+    keepButton.layer.cornerRadius = buttonDiameter / 2.0;
+    keepButton.layer.shadowColor = [UIColor blackColor].CGColor;
+    keepButton.layer.shadowOpacity = 0.15;
+    keepButton.layer.shadowRadius = 6.0;
+    keepButton.layer.shadowOffset = CGSizeMake(0, 3);
+    
+    UIImage *checkIcon = [UIImage systemImageNamed:@"checkmark" withConfiguration:config];
+    [keepButton setImage:checkIcon forState:UIControlStateNormal];
+    
+    [keepButton addTarget:self action:@selector(keepButtonTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:keepButton];
+}
+
+- (void)purgeButtonTapped {
+    if (self.topCardView) {
+        [self.topCardView swipeLeftProgrammatically];
+    }
+}
+
+- (void)keepButtonTapped {
+    if (self.topCardView) {
+        [self.topCardView swipeRightProgrammatically];
+    }
 }
 
 @end

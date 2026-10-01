@@ -21,6 +21,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, weak, nullable) id<PPCardViewDelegate> delegate; // Weak to avoid a retain cycle
 
 - (void)configureWithImage:(UIImage *)image;
+- (void)swipeLeftProgrammatically;
+- (void)swipeRightProgrammatically;
 
 @end
 
