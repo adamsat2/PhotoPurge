@@ -10,6 +10,9 @@
 // The image view is kept private inside the .m file so outside classes can't mess with it directly
 @property (nonatomic, strong) UIImageView *imageView;
 @property (nonatomic, assign) CGPoint originalCenter;
+@property (nonatomic, strong) UILabel *keepBadgeLabel;
+@property (nonatomic, strong) UILabel *deleteBadgeLabel;
+@property (nonatomic, strong) UIView *colorOverlayView;
 
 @end
 
@@ -36,14 +39,57 @@
         _imageView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [self addSubview:_imageView];
         
+        // Init color tint overlay
+        _colorOverlayView = [[UIView alloc] initWithFrame:self.bounds];
+        _colorOverlayView.layer.cornerRadius = 16.0;
+        _colorOverlayView.clipsToBounds = YES;
+        _colorOverlayView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        _colorOverlayView.alpha = 0.0;
+        _colorOverlayView.userInteractionEnabled = NO; // Let touches pass through
+        [self addSubview:_colorOverlayView];
+        
+        [self setupBadges];
+        
         UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
-                [self addGestureRecognizer:panGesture];
+        [self addGestureRecognizer:panGesture];
     }
     return self;
 }
 
 - (void)configureWithImage:(UIImage *)image {
     self.imageView.image = image;
+}
+
+- (void)setupBadges {
+    // Keep Badge (Top-Left, Green, slight counter-clockwise tilt)
+    _keepBadgeLabel = [[UILabel alloc] initWithFrame:CGRectMake(24.0, 24.0, 110.0, 44.0)];
+    _keepBadgeLabel.text = @"KEEP";
+    _keepBadgeLabel.textAlignment = NSTextAlignmentCenter;
+    _keepBadgeLabel.font = [UIFont systemFontOfSize:22.0 weight:UIFontWeightHeavy];
+    _keepBadgeLabel.textColor = [UIColor systemGreenColor];
+    _keepBadgeLabel.layer.borderColor = [UIColor systemGreenColor].CGColor;
+    _keepBadgeLabel.layer.borderWidth = 3.0;
+    _keepBadgeLabel.layer.cornerRadius = 8.0;
+    _keepBadgeLabel.clipsToBounds = YES;
+    _keepBadgeLabel.transform = CGAffineTransformMakeRotation(-0.2); // ~ -11 degrees
+    _keepBadgeLabel.alpha = 0.0;
+    [self addSubview:_keepBadgeLabel];
+    
+    // Delete Badge (Top-Right, Red, slight clockwise tilt)
+    CGFloat cardWidth = self.bounds.size.width;
+    _deleteBadgeLabel = [[UILabel alloc] initWithFrame:CGRectMake(cardWidth - 110.0 - 24.0, 24.0, 110.0, 44.0)];
+    _deleteBadgeLabel.text = @"PURGE";
+    _deleteBadgeLabel.textAlignment = NSTextAlignmentCenter;
+    _deleteBadgeLabel.font = [UIFont systemFontOfSize:22.0 weight:UIFontWeightHeavy];
+    _deleteBadgeLabel.textColor = [UIColor systemRedColor];
+    _deleteBadgeLabel.layer.borderColor = [UIColor systemRedColor].CGColor;
+    _deleteBadgeLabel.layer.borderWidth = 3.0;
+    _deleteBadgeLabel.layer.cornerRadius = 8.0;
+    _deleteBadgeLabel.clipsToBounds = YES;
+    _deleteBadgeLabel.transform = CGAffineTransformMakeRotation(0.2); // ~ +11 degrees
+    _deleteBadgeLabel.alpha = 0.0;
+    _deleteBadgeLabel.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    [self addSubview:_deleteBadgeLabel];
 }
 
 #pragma mark - Gesture Handling
@@ -70,6 +116,29 @@
             
             // Concatenate both transforms and apply to the card view
             self.transform = CGAffineTransformConcat(rotationTransform, translationTransform);
+            
+            CGFloat threshold = 120.0;
+            CGFloat maxOverlayAlpha = 0.28;
+            
+            if (translation.x > 0) {
+                // Swiping Right: Show Keep badge, hide Purge badge
+                CGFloat progress = fmin(translation.x / threshold, 1.0);
+                self.keepBadgeLabel.alpha = progress;
+                self.deleteBadgeLabel.alpha = 0.0;
+                self.colorOverlayView.backgroundColor = [UIColor systemGreenColor];
+                self.colorOverlayView.alpha = progress * maxOverlayAlpha;
+            } else if (translation.x < 0) {
+                // Swiping Left: Show Purge badge, hide Keep badge
+                CGFloat progress = fmin(fabs(translation.x) / threshold, 1.0);
+                self.deleteBadgeLabel.alpha = progress;
+                self.keepBadgeLabel.alpha = 0.0;
+                self.colorOverlayView.backgroundColor = [UIColor systemRedColor];
+                self.colorOverlayView.alpha = progress * maxOverlayAlpha;
+            } else {
+                self.keepBadgeLabel.alpha = 0.0;
+                self.deleteBadgeLabel.alpha = 0.0;
+                self.colorOverlayView.alpha = 0.0;
+            }
             break;
         }
             
@@ -111,6 +180,9 @@
                      animations:^{
         self.transform = CGAffineTransformIdentity;
         self.center = self.originalCenter;
+        self.keepBadgeLabel.alpha = 0.0;
+        self.deleteBadgeLabel.alpha = 0.0;
+        self.colorOverlayView.alpha = 0.0;
     } completion:nil];
 }
 
