@@ -40,7 +40,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 
 @end
 
-@interface PPSwipeViewController () <PPCardViewDelegate, PPCompletionViewDelegate, PPPermissionViewDelegate>
+@interface PPSwipeViewController () <PPCardViewDelegate, PPCompletionViewDelegate, PPPermissionViewDelegate, PHPhotoLibraryChangeObserver>
 
 @property (nonatomic, strong) PHFetchResult<PHAsset *> *assets;
 @property (nonatomic, strong, nullable) PPCardView *topCardView;
@@ -80,6 +80,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [[PHPhotoLibrary sharedPhotoLibrary] unregisterChangeObserver:self];
 }
 
 - (void)applicationWillEnterForeground {
@@ -88,13 +89,15 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 }
 
 - (void)loadPhotoLibraryAssets {
+    [[PHPhotoLibrary sharedPhotoLibrary] registerChangeObserver:self];
+    
     PHFetchOptions *options = [[PHFetchOptions alloc] init];
     
     // Sort by creationDate in descending order
-    NSSortDescriptor *dateSort = [NSSortDescriptor sortDescriptorWithKey:@"creationDate" ascending:NO];
-    options.sortDescriptors = @[dateSort];
+    options.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"creationDate" ascending:NO]];
     
     self.assets = [PHAsset fetchAssetsWithOptions:options];
+    self.currentIndex = 0;
     
     NSLog(@"PhotoPurge: Successfully loaded %lu assets.", (unsigned long)self.assets.count);
     
@@ -115,39 +118,37 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     return CGRectMake(cardX, cardY, cardWidth, cardHeight);
 }
 
-- (PPCardView *)createCardForIndex:(NSUInteger)index isInteractive:(BOOL)isInteractive {
+- (nullable PPCardView *)createCardForIndex:(NSUInteger)index isInteractive:(BOOL)isInteractive {
     if (index >= self.assets.count) {
         return nil;
     }
     
-    CGRect frame = [self cardFrame];
-    PPCardView *card = [[PPCardView alloc] initWithFrame:frame];
-    card.userInteractionEnabled = isInteractive;
-    if (isInteractive) {
-        card.delegate = self;
-    }
-    
     PHAsset *asset = self.assets[index];
-    PHImageRequestOptions *requestOptions = [[PHImageRequestOptions alloc] init];
-    requestOptions.deliveryMode = PHImageRequestOptionsDeliveryModeHighQualityFormat;
-    requestOptions.networkAccessAllowed = YES; // Allows download from iCloud should it be needed
+    PPCardView *cardView = [[PPCardView alloc] initWithFrame:[self cardFrame]];
+    cardView.assetIdentifier = asset.localIdentifier;
+    cardView.delegate = isInteractive ? self : nil;
+    cardView.userInteractionEnabled = isInteractive;
     
-    CGFloat scale = [UIScreen mainScreen].scale;
-    CGSize targetSize = CGSizeMake(frame.size.width * scale, frame.size.height * scale);
+    PHImageRequestOptions *options = [[PHImageRequestOptions alloc] init];
+    options.networkAccessAllowed = YES; // Incase iCloud is needed
+    options.deliveryMode = PHImageRequestOptionsDeliveryModeHighQualityFormat;
+    
+    CGSize targetSize = CGSizeMake(cardView.bounds.size.width * [UIScreen mainScreen].scale,
+                                   cardView.bounds.size.height * [UIScreen mainScreen].scale);
     
     [[PHImageManager defaultManager] requestImageForAsset:asset
                                                targetSize:targetSize
                                               contentMode:PHImageContentModeAspectFill
-                                                  options:requestOptions
+                                                  options:options
                                             resultHandler:^(UIImage * _Nullable result, NSDictionary * _Nullable info) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (result) {
-                [card configureWithImage:result];
+            if (result && [cardView.assetIdentifier isEqualToString:asset.localIdentifier]) {
+                [cardView configureWithImage:result];
             }
         });
     }];
     
-    return card;
+    return cardView;
 }
 
 #pragma mark - Stack Management
@@ -654,6 +655,106 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     if ([[UIApplication sharedApplication] canOpenURL:settingsURL]) {
         [[UIApplication sharedApplication] openURL:settingsURL options:@{} completionHandler:nil];
     }
+}
+
+#pragma mark - PHPhotoLibraryChangeObserver
+
+- (void)photoLibraryDidChange:(PHChange *)changeInstance {
+    PHFetchResultChangeDetails *changeDetails = [changeInstance changeDetailsForFetchResult:self.assets];
+    if (!changeDetails) {
+        return;
+    }
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Snapshot previous state before applying changes
+        NSArray<PHAsset *> *removedObjects = [changeDetails removedObjects];
+        NSIndexSet *insertedIndexes = [changeDetails insertedIndexes];
+        
+        // Commit updated fetch result
+        self.assets = [changeDetails fetchResultAfterChanges];
+        
+        // Reconcile Staged Deletions (remove assets deleted outside the app)
+        if (self.pendingDeletionAssets.count > 0 && removedObjects.count > 0) {
+            [self.pendingDeletionAssets removeObjectsInArray:removedObjects];
+        }
+        
+        // Reconcile Action History (prune references to externally deleted photos)
+        if (self.actionHistory.count > 0 && removedObjects.count > 0) {
+            NSPredicate *validAssetPredicate = [NSPredicate predicateWithBlock:^BOOL(PPSwipeHistoryItem *item, NSDictionary *bindings) {
+                return ![removedObjects containsObject:item.asset];
+            }];
+            [self.actionHistory filterUsingPredicate:validAssetPredicate];
+        }
+        
+        // Handle empty library state
+        if (self.assets.count == 0) {
+            [self.topCardView removeFromSuperview];
+            self.topCardView = nil;
+            [self.bottomCardView removeFromSuperview];
+            self.bottomCardView = nil;
+            [self showCompletionView];
+            [self updateControlClusterStates];
+            return;
+        }
+        
+        // Handle restorations & insertions
+        BOOL didInsertVisibleOrPrecedingAsset = NO;
+        
+        if (insertedIndexes.count > 0) {
+            NSUInteger lowestInsertedIndex = [insertedIndexes firstIndex];
+            
+            // If the restored/added asset was placed at or before our current view position
+            if (lowestInsertedIndex <= self.currentIndex) {
+                // Rewind currentIndex to the restored photo so it immediately appears on top
+                self.currentIndex = lowestInsertedIndex;
+                didInsertVisibleOrPrecedingAsset = YES;
+            } else if (lowestInsertedIndex == self.currentIndex + 1) {
+                // Restored directly underneath the top card (into bottom card slot)
+                didInsertVisibleOrPrecedingAsset = YES;
+            }
+        }
+        
+        // Check if visible cards were deleted
+        BOOL topCardDeleted = NO;
+        for (PHAsset *removed in removedObjects) {
+            if (self.topCardView && [self.topCardView.assetIdentifier isEqualToString:removed.localIdentifier]) {
+                topCardDeleted = YES;
+                break;
+            }
+        }
+        
+        // Dismiss completion view if assets are now available
+        if (self.completionView && self.assets.count > 0 && self.currentIndex < self.assets.count) {
+            [self.completionView removeFromSuperview];
+            self.completionView = nil;
+        }
+        
+        // Clamp index to valid bounds
+        if (self.currentIndex >= self.assets.count) {
+            self.currentIndex = (self.assets.count > 0) ? (self.assets.count - 1) : 0;
+        }
+        
+        // Rebuild stack if top card was deleted, an asset was restored into view,
+        // or a general non-incremental collection reload happened
+        if (topCardDeleted || didInsertVisibleOrPrecedingAsset || ![changeDetails hasIncrementalChanges]) {
+            [UIView transitionWithView:self.view
+                              duration:0.25
+                               options:UIViewAnimationOptionTransitionCrossDissolve
+                            animations:^{
+                if (self.topCardView) {
+                    [self.topCardView removeFromSuperview];
+                    self.topCardView = nil;
+                }
+                if (self.bottomCardView) {
+                    [self.bottomCardView removeFromSuperview];
+                    self.bottomCardView = nil;
+                }
+                [self setupInitialStack];
+            } completion:nil];
+        }
+        
+        [self updateControlClusterStates];
+    });
 }
 
 @end
