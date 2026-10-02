@@ -129,6 +129,8 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     cardView.delegate = isInteractive ? self : nil;
     cardView.userInteractionEnabled = isInteractive;
     
+    [cardView configureMetadataWithAsset:asset];
+    
     PHImageRequestOptions *options = [[PHImageRequestOptions alloc] init];
     options.networkAccessAllowed = YES; // Incase iCloud is needed
     options.deliveryMode = PHImageRequestOptionsDeliveryModeHighQualityFormat;

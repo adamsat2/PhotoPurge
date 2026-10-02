@@ -16,6 +16,14 @@
 @property (nonatomic, strong) UIImpactFeedbackGenerator *feedbackGenerator;
 @property (nonatomic, assign) BOOL hasTriggeredThresholdHaptic;
 
+@property (nonatomic, strong) UIView *overlayView;
+@property (nonatomic, strong) UILabel *stampLabel;
+@property (nonatomic, strong) UIVisualEffectView *metadataPillView;
+@property (nonatomic, strong) UIStackView *metadataStackView;
+@property (nonatomic, strong) UILabel *dateLabel;
+@property (nonatomic, strong) UIView *mediaTypeBadgeContainer;
+@property (nonatomic, strong) UILabel *mediaTypeBadgeLabel;
+
 @end
 
 @implementation PPCardView
@@ -51,6 +59,7 @@
         [self addSubview:_colorOverlayView];
         
         [self setupBadges];
+        [self setupMetadataOverlay];
         
         _feedbackGenerator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
         [_feedbackGenerator prepare];
@@ -96,6 +105,101 @@
     _deleteBadgeLabel.alpha = 0.0;
     _deleteBadgeLabel.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
     [self addSubview:_deleteBadgeLabel];
+}
+
+- (void)setupMetadataOverlay {
+    UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark];
+    self.metadataPillView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+    self.metadataPillView.layer.cornerRadius = 14.0;
+    self.metadataPillView.clipsToBounds = YES;
+    self.metadataPillView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.metadataPillView.userInteractionEnabled = NO; // Prevent gesture interference
+    [self addSubview:self.metadataPillView];
+    
+    self.metadataStackView = [[UIStackView alloc] init];
+    self.metadataStackView.axis = UILayoutConstraintAxisHorizontal;
+    self.metadataStackView.alignment = UIStackViewAlignmentCenter;
+    self.metadataStackView.spacing = 6.0;
+    self.metadataStackView.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.metadataPillView.contentView addSubview:self.metadataStackView];
+    
+    // Date Label
+    self.dateLabel = [[UILabel alloc] init];
+    self.dateLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
+    self.dateLabel.textColor = [UIColor whiteColor];
+    [self.metadataStackView addArrangedSubview:self.dateLabel];
+    
+    // Subtype Badge Label
+    self.mediaTypeBadgeLabel = [[UILabel alloc] init];
+    self.mediaTypeBadgeLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
+    self.mediaTypeBadgeLabel.textColor = [UIColor whiteColor];
+    
+    self.mediaTypeBadgeContainer = [[UIView alloc] init];
+    self.mediaTypeBadgeContainer.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.2];
+    self.mediaTypeBadgeContainer.layer.cornerRadius = 6.0;
+    self.mediaTypeBadgeContainer.clipsToBounds = YES;
+    self.mediaTypeBadgeContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    self.mediaTypeBadgeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.mediaTypeBadgeContainer addSubview:self.mediaTypeBadgeLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [self.mediaTypeBadgeLabel.topAnchor constraintEqualToAnchor:self.mediaTypeBadgeContainer.topAnchor constant:2.0],
+        [self.mediaTypeBadgeLabel.bottomAnchor constraintEqualToAnchor:self.mediaTypeBadgeContainer.bottomAnchor constant:-2.0],
+        [self.mediaTypeBadgeLabel.leadingAnchor constraintEqualToAnchor:self.mediaTypeBadgeContainer.leadingAnchor constant:6.0],
+        [self.mediaTypeBadgeLabel.trailingAnchor constraintEqualToAnchor:self.mediaTypeBadgeContainer.trailingAnchor constant:-6.0]
+    ]];
+    
+    [self.metadataStackView addArrangedSubview:self.mediaTypeBadgeContainer];
+    
+    // Anchor metadata pill to leading and bottom edges
+    [NSLayoutConstraint activateConstraints:@[
+        [self.metadataPillView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:16.0],
+        [self.metadataPillView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-16.0],
+        
+        [self.metadataStackView.topAnchor constraintEqualToAnchor:self.metadataPillView.contentView.topAnchor constant:5.0],
+        [self.metadataStackView.bottomAnchor constraintEqualToAnchor:self.metadataPillView.contentView.bottomAnchor constant:-5.0],
+        [self.metadataStackView.leadingAnchor constraintEqualToAnchor:self.metadataPillView.contentView.leadingAnchor constant:10.0],
+        [self.metadataStackView.trailingAnchor constraintEqualToAnchor:self.metadataPillView.contentView.trailingAnchor constant:-10.0]
+    ]];
+}
+
++ (NSDateFormatter *)sharedDateFormatter {
+    static NSDateFormatter *formatter = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        formatter = [[NSDateFormatter alloc] init];
+        formatter.dateStyle = NSDateFormatterMediumStyle;
+        formatter.timeStyle = NSDateFormatterNoStyle;
+    });
+    return formatter;
+}
+
+- (void)configureMetadataWithAsset:(PHAsset *)asset {
+    // Creation date formatting
+    if (asset.creationDate) {
+        self.dateLabel.text = [[PPCardView sharedDateFormatter] stringFromDate:asset.creationDate];
+        self.dateLabel.hidden = NO;
+    } else {
+        self.dateLabel.hidden = YES;
+    }
+    
+    // Media subtypes and type detection
+    if (asset.mediaSubtypes & PHAssetMediaSubtypePhotoScreenshot) {
+        self.mediaTypeBadgeContainer.hidden = NO;
+        self.mediaTypeBadgeLabel.text = @"Screenshot";
+    } else if (asset.mediaSubtypes & PHAssetMediaSubtypePhotoLive) {
+        self.mediaTypeBadgeContainer.hidden = NO;
+        self.mediaTypeBadgeLabel.text = @"Live";
+    } else if (asset.mediaType == PHAssetMediaTypeVideo) {
+        self.mediaTypeBadgeContainer.hidden = NO;
+        self.mediaTypeBadgeLabel.text = @"Video";
+        //NSUInteger minutes = (NSUInteger)asset.duration / 60;
+        //NSUInteger seconds = (NSUInteger)asset.duration % 60;
+        //self.mediaTypeBadgeLabel.text = [NSString stringWithFormat:@"%lu:%02lu", (unsigned long)minutes, (unsigned long)seconds];
+    } else {
+        self.mediaTypeBadgeContainer.hidden = YES;
+    }
 }
 
 #pragma mark - Gesture Handling

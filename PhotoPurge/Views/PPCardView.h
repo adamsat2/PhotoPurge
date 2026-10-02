@@ -4,6 +4,7 @@
 //
 
 #import <UIKit/UIKit.h>
+#import <Photos/Photos.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -22,6 +23,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *assetIdentifier;
 
 - (void)configureWithImage:(UIImage *)image;
+- (void)configureMetadataWithAsset:(PHAsset *)asset;
 - (void)swipeLeftProgrammatically;
 - (void)swipeRightProgrammatically;
 
