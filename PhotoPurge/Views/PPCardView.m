@@ -58,6 +58,7 @@
         _colorOverlayView.userInteractionEnabled = NO; // Let touches pass through
         [self addSubview:_colorOverlayView];
         
+        _imageRequestID = PHInvalidImageRequestID;
         [self setupBadges];
         [self setupMetadataOverlay];
         

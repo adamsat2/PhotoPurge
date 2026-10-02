@@ -21,6 +21,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic, weak, nullable) id<PPCardViewDelegate> delegate; // Weak to avoid a retain cycle
 @property (nonatomic, copy, nullable) NSString *assetIdentifier;
+@property (nonatomic, assign) PHImageRequestID imageRequestID;
 
 - (void)configureWithImage:(UIImage *)image;
 - (void)configureMetadataWithAsset:(PHAsset *)asset;

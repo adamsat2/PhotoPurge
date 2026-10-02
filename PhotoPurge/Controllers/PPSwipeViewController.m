@@ -55,6 +55,8 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 @property (nonatomic, strong) UIButton *keepButton;
 @property (nonatomic, strong, nullable) PPCompletionView *completionView;
 @property (nonatomic, strong, nullable) PPPermissionView *permissionView;
+@property (nonatomic, strong) PHCachingImageManager *cachingImageManager;
+@property (nonatomic, assign) NSInteger previousPreheatIndex;
 
 @end
 
@@ -65,8 +67,12 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     self.view.backgroundColor = [UIColor systemGray6Color];
     self.title = @"PhotoPurge";
     self.currentIndex = 0;
+    self.previousPreheatIndex = -1;
+    self.cachingImageManager = [[PHCachingImageManager alloc] init];
     self.pendingDeletionAssets = [[NSMutableArray alloc] init];
     self.actionHistory = [[NSMutableArray alloc] init];
+    
+    self.cachingImageManager.allowsCachingHighQualityImages = YES;
     
     [self setupActionButtons];
     
@@ -81,6 +87,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [[PHPhotoLibrary sharedPhotoLibrary] unregisterChangeObserver:self];
+    [self.cachingImageManager stopCachingImagesForAllAssets];
 }
 
 - (void)applicationWillEnterForeground {
@@ -98,8 +105,10 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     
     self.assets = [PHAsset fetchAssetsWithOptions:options];
     self.currentIndex = 0;
+    self.previousPreheatIndex = -1;
     
-    NSLog(@"PhotoPurge: Successfully loaded %lu assets.", (unsigned long)self.assets.count);
+    [self.cachingImageManager stopCachingImagesForAllAssets];
+    [self updatePreheatWindow];
     
     [self setupInitialStack];
 }
@@ -131,18 +140,14 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     
     [cardView configureMetadataWithAsset:asset];
     
-    PHImageRequestOptions *options = [[PHImageRequestOptions alloc] init];
-    options.networkAccessAllowed = YES; // Incase iCloud is needed
-    options.deliveryMode = PHImageRequestOptionsDeliveryModeHighQualityFormat;
+    CGSize targetSize = [self cardImageTargetSize];
+    PHImageRequestOptions *options = [self standardImageRequestOptions];
     
-    CGSize targetSize = CGSizeMake(cardView.bounds.size.width * [UIScreen mainScreen].scale,
-                                   cardView.bounds.size.height * [UIScreen mainScreen].scale);
-    
-    [[PHImageManager defaultManager] requestImageForAsset:asset
-                                               targetSize:targetSize
-                                              contentMode:PHImageContentModeAspectFill
-                                                  options:options
-                                            resultHandler:^(UIImage * _Nullable result, NSDictionary * _Nullable info) {
+    cardView.imageRequestID = [self.cachingImageManager requestImageForAsset:asset
+                                                                  targetSize:targetSize
+                                                                 contentMode:PHImageContentModeAspectFill
+                                                                     options:options
+                                                               resultHandler:^(UIImage * _Nullable result, NSDictionary * _Nullable info) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (result && [cardView.assetIdentifier isEqualToString:asset.localIdentifier]) {
                 [cardView configureWithImage:result];
@@ -211,6 +216,9 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     } else if (!self.topCardView) {
         [self showCompletionView];
     }
+    
+    // Advance the sliding preheat window
+    [self updatePreheatWindow];
 }
 
 #pragma mark - PPCardViewDelegate
@@ -412,11 +420,9 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     // Roll back to that specific asset's index
     self.currentIndex = lastItem.originalIndex;
     
-    // Demote top card to bottom card
-    if (self.bottomCardView) {
-        [self.bottomCardView removeFromSuperview];
-        self.bottomCardView = nil;
-    }
+    // Cancel and release existing cards
+    [self discardCardView:self.bottomCardView];
+    self.bottomCardView = nil;
     
     if (self.topCardView) {
         self.bottomCardView = self.topCardView;
@@ -449,6 +455,10 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
             restoredCard.frame = [self cardFrame];
         } completion:nil];
     }
+    
+    // Invalidate and re-align preheat window
+    self.previousPreheatIndex = -1;
+    [self updatePreheatWindow];
     
     [self updateControlClusterStates];
 }
@@ -515,7 +525,6 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     } completionHandler:^(BOOL success, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (success) {
-                NSLog(@"PhotoPurge: Successfully deleted %lu assets from device.", (unsigned long)assetsToDelete.count);
                 
                 // Clear the staging queue
                 [self.pendingDeletionAssets removeAllObjects];
@@ -577,8 +586,12 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
         self.completionView = nil;
         
         self.currentIndex = 0;
+        self.previousPreheatIndex = -1;
         [self.pendingDeletionAssets removeAllObjects];
         [self.actionHistory removeAllObjects];
+        
+        [self.cachingImageManager stopCachingImagesForAllAssets];
+        [self updatePreheatWindow];
         
         [self setupInitialStack];
         [self updateControlClusterStates];
@@ -757,6 +770,85 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
         
         [self updateControlClusterStates];
     });
+}
+
+#pragma mark - Image Cache & Preheat Pipeline
+
+- (CGSize)cardImageTargetSize {
+    CGRect cardRect = [self cardFrame];
+    CGFloat scale = [UIScreen mainScreen].scale;
+    return CGSizeMake(cardRect.size.width * scale, cardRect.size.height * scale);
+}
+
+- (PHImageRequestOptions *)standardImageRequestOptions {
+    PHImageRequestOptions *options = [[PHImageRequestOptions alloc] init];
+    options.deliveryMode = PHImageRequestOptionsDeliveryModeHighQualityFormat;
+    options.resizeMode = PHImageRequestOptionsResizeModeExact;
+    options.networkAccessAllowed = YES;
+    return options;
+}
+
+- (void)updatePreheatWindow {
+    if (!self.assets || self.assets.count == 0) {
+        return;
+    }
+    
+    // Prevent redundant iterations if pointer hasn't advanced
+    if (self.previousPreheatIndex == (NSInteger)self.currentIndex) {
+        return;
+    }
+    
+    const NSInteger preheatBuffer = 4; // Look ahead 4 photos
+    NSInteger totalCount = (NSInteger)self.assets.count;
+    
+    // Calculate assets to start caching ahead (currentIndex + 2 through currentIndex + 5)
+    NSInteger startPreheat = MIN(totalCount, (NSInteger)self.currentIndex + 2);
+    NSInteger endPreheat = MIN(totalCount, startPreheat + preheatBuffer);
+    
+    NSMutableArray<PHAsset *> *assetsToStartCaching = [NSMutableArray array];
+    for (NSInteger i = startPreheat; i < endPreheat; i++) {
+        [assetsToStartCaching addObject:self.assets[i]];
+    }
+    
+    // Calculate past assets to stop caching (assets that dropped behind our window)
+    NSMutableArray<PHAsset *> *assetsToStopCaching = [NSMutableArray array];
+    if (self.previousPreheatIndex >= 0 && self.previousPreheatIndex < (NSInteger)self.currentIndex) {
+        NSInteger stopStart = self.previousPreheatIndex;
+        NSInteger stopEnd = self.currentIndex;
+        for (NSInteger i = stopStart; i < stopEnd && i < totalCount; i++) {
+            [assetsToStopCaching addObject:self.assets[i]];
+        }
+    }
+    
+    CGSize targetSize = [self cardImageTargetSize];
+    PHImageRequestOptions *options = [self standardImageRequestOptions];
+    
+    // Execute cache differential
+    if (assetsToStartCaching.count > 0) {
+        [self.cachingImageManager startCachingImagesForAssets:assetsToStartCaching
+                                                   targetSize:targetSize
+                                                  contentMode:PHImageContentModeAspectFill
+                                                      options:options];
+    }
+    
+    if (assetsToStopCaching.count > 0) {
+        [self.cachingImageManager stopCachingImagesForAssets:assetsToStopCaching
+                                                  targetSize:targetSize
+                                                 contentMode:PHImageContentModeAspectFill
+                                                     options:options];
+    }
+    
+    self.previousPreheatIndex = self.currentIndex;
+}
+
+- (void)discardCardView:(PPCardView *)cardView {
+    if (!cardView) return;
+    
+    if (cardView.imageRequestID != PHInvalidImageRequestID) {
+        [self.cachingImageManager cancelImageRequest:cardView.imageRequestID];
+        cardView.imageRequestID = PHInvalidImageRequestID;
+    }
+    [cardView removeFromSuperview];
 }
 
 @end
