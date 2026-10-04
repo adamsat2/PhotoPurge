@@ -140,6 +140,11 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     
     [cardView configureMetadataWithAsset:asset];
     
+    // Prepare media playback for top card
+    if (isInteractive) {
+        [cardView prepareRunningMediaWithAsset:asset cachingManager:self.cachingImageManager];
+    }
+    
     CGSize targetSize = [self cardImageTargetSize];
     PHImageRequestOptions *options = [self standardImageRequestOptions];
     
@@ -189,6 +194,13 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     if (self.topCardView) {
         self.topCardView.userInteractionEnabled = YES;
         self.topCardView.delegate = self;
+        
+        // Prepare media and start media on new top card
+        if (self.currentIndex < self.assets.count) {
+            PHAsset *activeAsset = self.assets[self.currentIndex];
+            [self.topCardView prepareRunningMediaWithAsset:activeAsset cachingManager:self.cachingImageManager];
+            [self.topCardView startMediaPlayback];
+        }
         
         // Animate bottom card expanding to full size
         [UIView animateWithDuration:0.25
@@ -843,6 +855,8 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 
 - (void)discardCardView:(PPCardView *)cardView {
     if (!cardView) return;
+    
+    [cardView tearDownMediaPlayback];
     
     if (cardView.imageRequestID != PHInvalidImageRequestID) {
         [self.cachingImageManager cancelImageRequest:cardView.imageRequestID];

@@ -25,6 +25,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)configureWithImage:(UIImage *)image;
 - (void)configureMetadataWithAsset:(PHAsset *)asset;
+- (void)prepareRunningMediaWithAsset:(PHAsset *)asset cachingManager:(PHCachingImageManager *)imageManager;
+- (void)startMediaPlayback;
+- (void)pauseMediaPlayback;
+- (void)tearDownMediaPlayback;
 - (void)swipeLeftProgrammatically;
 - (void)swipeRightProgrammatically;
 

@@ -4,10 +4,14 @@
 //
 
 #import "PPCardView.h"
+#import "PPPlayerView.h"
+#import <PhotosUI/PhotosUI.h>
+#import <AVFoundation/AVFoundation.h>
 
-@interface PPCardView ()
+@interface PPCardView () <PHLivePhotoViewDelegate>
 
 // The image view is kept private inside the .m file so outside classes can't mess with it directly
+// Private View Hierarchy
 @property (nonatomic, strong) UIImageView *imageView;
 @property (nonatomic, assign) CGPoint originalCenter;
 @property (nonatomic, strong) UILabel *keepBadgeLabel;
@@ -16,13 +20,28 @@
 @property (nonatomic, strong) UIImpactFeedbackGenerator *feedbackGenerator;
 @property (nonatomic, assign) BOOL hasTriggeredThresholdHaptic;
 
-@property (nonatomic, strong) UIView *overlayView;
-@property (nonatomic, strong) UILabel *stampLabel;
+// Metadata Overlay
 @property (nonatomic, strong) UIVisualEffectView *metadataPillView;
 @property (nonatomic, strong) UIStackView *metadataStackView;
 @property (nonatomic, strong) UILabel *dateLabel;
 @property (nonatomic, strong) UIView *mediaTypeBadgeContainer;
 @property (nonatomic, strong) UILabel *mediaTypeBadgeLabel;
+
+// Running Media Elements
+@property (nonatomic, strong) PHLivePhotoView *livePhotoView;
+@property (nonatomic, strong) PPPlayerView *videoPlayerView;
+@property (nonatomic, strong, nullable) AVPlayer *player;
+@property (nonatomic, strong, nullable) id playerEndObserver;
+@property (nonatomic, strong, nullable) PHAsset *associatedAsset;
+
+// Audio Pill
+@property (nonatomic, strong) UIVisualEffectView *volumePillView;
+@property (nonatomic, strong) UIButton *volumeButton;
+@property (nonatomic, assign) BOOL isMuted;
+
+// Gestures
+@property (nonatomic, strong) UIPanGestureRecognizer *panGesture;
+@property (nonatomic, strong) UILongPressGestureRecognizer *livePhotoGesture;
 
 @end
 
@@ -32,6 +51,7 @@
     self = [super initWithFrame:frame];
     if (self) {
         self.backgroundColor = [UIColor whiteColor];
+        self.isMuted = YES;
         
         // Card styling
         self.layer.cornerRadius = 16.0;
@@ -49,6 +69,26 @@
         _imageView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [self addSubview:_imageView];
         
+        // Init video player view
+        _videoPlayerView = [[PPPlayerView alloc] initWithFrame:self.bounds];
+        _videoPlayerView.layer.cornerRadius = 16.0;
+        _videoPlayerView.clipsToBounds = YES;
+        _videoPlayerView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        _videoPlayerView.hidden = YES;
+        _videoPlayerView.alpha = 0.0;
+        [self addSubview:_videoPlayerView];
+        
+        // Init live photo view
+        _livePhotoView = [[PHLivePhotoView alloc] initWithFrame:self.bounds];
+        _livePhotoView.layer.cornerRadius = 16.0;
+        _livePhotoView.clipsToBounds = YES;
+        _livePhotoView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        _livePhotoView.contentMode = UIViewContentModeScaleAspectFill;
+        _livePhotoView.delegate = self;
+        _livePhotoView.hidden = YES;
+        _livePhotoView.alpha = 0.0;
+        [self addSubview:_livePhotoView];
+        
         // Init color tint overlay
         _colorOverlayView = [[UIView alloc] initWithFrame:self.bounds];
         _colorOverlayView.layer.cornerRadius = 16.0;
@@ -61,13 +101,13 @@
         _imageRequestID = PHInvalidImageRequestID;
         [self setupBadges];
         [self setupMetadataOverlay];
+        [self setupVolumePill];
         
         _feedbackGenerator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
         [_feedbackGenerator prepare];
         _hasTriggeredThresholdHaptic = NO;
         
-        UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
-        [self addGestureRecognizer:panGesture];
+        [self setupGestures];
     }
     return self;
 }
@@ -75,6 +115,8 @@
 - (void)configureWithImage:(UIImage *)image {
     self.imageView.image = image;
 }
+
+#pragma mark - Badge Setup
 
 - (void)setupBadges {
     // Keep Badge (Top-Left, Green, slight counter-clockwise tilt)
@@ -107,6 +149,8 @@
     _deleteBadgeLabel.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
     [self addSubview:_deleteBadgeLabel];
 }
+
+#pragma mark - Metadata Pill Setup
 
 - (void)setupMetadataOverlay {
     UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark];
@@ -203,6 +247,224 @@
     }
 }
 
+#pragma mark - Volume Pill Setup
+
+- (void)setupVolumePill {
+    UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark];
+    _volumePillView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+    _volumePillView.layer.cornerRadius = 16.0;
+    _volumePillView.clipsToBounds = YES;
+    _volumePillView.translatesAutoresizingMaskIntoConstraints = NO;
+    _volumePillView.hidden = YES;
+    [self addSubview:_volumePillView];
+    
+    _volumeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _volumeButton.tintColor = [UIColor whiteColor];
+    _volumeButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [_volumeButton addTarget:self action:@selector(handleVolumeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
+    [_volumePillView.contentView addSubview:_volumeButton];
+    
+    [self updateVolumeButtonAppearance];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [_volumePillView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-16.0],
+        [_volumePillView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-16.0],
+        [_volumePillView.widthAnchor constraintEqualToConstant:32.0],
+        [_volumePillView.heightAnchor constraintEqualToConstant:32.0],
+        
+        [_volumeButton.topAnchor constraintEqualToAnchor:_volumePillView.contentView.topAnchor],
+        [_volumeButton.bottomAnchor constraintEqualToAnchor:_volumePillView.contentView.bottomAnchor],
+        [_volumeButton.leadingAnchor constraintEqualToAnchor:_volumePillView.contentView.leadingAnchor],
+        [_volumeButton.trailingAnchor constraintEqualToAnchor:_volumePillView.contentView.trailingAnchor]
+    ]];
+}
+
+- (void)updateVolumeButtonAppearance {
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightSemibold];
+    NSString *symbolName = self.isMuted ? @"speaker.slash.fill" : @"speaker.wave.2.fill";
+    UIImage *icon = [UIImage systemImageNamed:symbolName withConfiguration:config];
+    [self.volumeButton setImage:icon forState:UIControlStateNormal];
+}
+
+- (void)handleVolumeButtonTapped {
+    self.isMuted = !self.isMuted;
+    if (self.player) {
+        self.player.muted = self.isMuted;
+    }
+    
+    [UIView animateWithDuration:0.15 animations:^{
+        self.volumeButton.transform = CGAffineTransformMakeScale(1.2, 1.2);
+    } completion:^(BOOL finished) {
+        [self updateVolumeButtonAppearance];
+        [UIView animateWithDuration:0.15 animations:^{
+            self.volumeButton.transform = CGAffineTransformIdentity;
+        }];
+    }];
+}
+
+#pragma mark - Gestures
+- (void)setupGestures {
+    _panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+    [self addGestureRecognizer:_panGesture];
+    
+    // Hold to play Live Photo
+    _livePhotoGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLivePhotoLongPress:)];
+    _livePhotoGesture.minimumPressDuration = 0.2;
+    _livePhotoGesture.cancelsTouchesInView = NO;
+    [self addGestureRecognizer:_livePhotoGesture];
+}
+
+- (void)handleLivePhotoLongPress:(UILongPressGestureRecognizer *)gesture {
+    if (!self.livePhotoView.livePhoto || self.livePhotoView.hidden) {
+        return;
+    }
+    
+    if (gesture.state == UIGestureRecognizerStateBegan) {
+        [self.livePhotoView startPlaybackWithStyle:PHLivePhotoViewPlaybackStyleFull];
+    } else if (gesture.state == UIGestureRecognizerStateEnded || gesture.state == UIGestureRecognizerStateCancelled) {
+        [self.livePhotoView stopPlayback];
+    }
+}
+
+#pragma mark - Media Preparation & Playback
+
+- (void)prepareRunningMediaWithAsset:(PHAsset *)asset cachingManager:(PHCachingImageManager *)imageManager {
+    self.associatedAsset = asset;
+    
+    // Video Asset Setup
+    if (asset.mediaType == PHAssetMediaTypeVideo) {
+        self.volumePillView.hidden = NO;
+        
+        PHVideoRequestOptions *options = [[PHVideoRequestOptions alloc] init];
+        options.networkAccessAllowed = YES;
+        options.deliveryMode = PHVideoRequestOptionsDeliveryModeAutomatic;
+        
+        __weak typeof(self) weakSelf = self;
+        [imageManager requestPlayerItemForVideo:asset
+                                        options:options
+                                  resultHandler:^(AVPlayerItem * _Nullable playerItem, NSDictionary * _Nullable info) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(weakSelf) strongSelf = weakSelf;
+                if (!strongSelf || ![strongSelf.assetIdentifier isEqualToString:asset.localIdentifier]) {
+                    return;
+                }
+                [strongSelf setupPlayerWithItem:playerItem];
+            });
+        }];
+        
+        // Live Photo Asset Setup
+    } else if (asset.mediaSubtypes & PHAssetMediaSubtypePhotoLive) {
+        self.volumePillView.hidden = YES;
+        
+        PHLivePhotoRequestOptions *options = [[PHLivePhotoRequestOptions alloc] init];
+        options.networkAccessAllowed = YES;
+        options.deliveryMode = PHImageRequestOptionsDeliveryModeHighQualityFormat;
+        
+        CGSize targetSize = CGSizeMake(self.bounds.size.width * [UIScreen mainScreen].scale,
+                                       self.bounds.size.height * [UIScreen mainScreen].scale);
+        
+        __weak typeof(self) weakSelf = self;
+        [imageManager requestLivePhotoForAsset:asset
+                                    targetSize:targetSize
+                                   contentMode:PHImageContentModeAspectFill
+                                       options:options
+                                 resultHandler:^(PHLivePhoto * _Nullable livePhoto, NSDictionary * _Nullable info) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(weakSelf) strongSelf = weakSelf;
+                if (!strongSelf || ![strongSelf.assetIdentifier isEqualToString:asset.localIdentifier]) {
+                    return;
+                }
+                if (livePhoto) {
+                    strongSelf.livePhotoView.livePhoto = livePhoto;
+                    strongSelf.livePhotoView.hidden = NO;
+                    [UIView animateWithDuration:0.25 animations:^{
+                        strongSelf.livePhotoView.alpha = 1.0;
+                    }];
+                }
+            });
+        }];
+    } else {
+        self.volumePillView.hidden = YES;
+    }
+}
+
+- (void)setupPlayerWithItem:(AVPlayerItem *)playerItem {
+    [self cleanUpPlayerObservers];
+    
+    self.player = [AVPlayer playerWithPlayerItem:playerItem];
+    self.player.muted = self.isMuted;
+    self.player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
+    self.videoPlayerView.player = self.player;
+    
+    // Seamless Looping Observer
+    __weak typeof(self) weakSelf = self;
+    self.playerEndObserver = [[NSNotificationCenter defaultCenter] addObserverForName:AVPlayerItemDidPlayToEndTimeNotification
+                                                                               object:playerItem
+                                                                                queue:[NSOperationQueue mainQueue]
+                                                                           usingBlock:^(NSNotification * _Nonnull note) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        [strongSelf.player seekToTime:kCMTimeZero toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+    }];
+    
+    self.videoPlayerView.hidden = NO;
+    [UIView animateWithDuration:0.25 animations:^{
+        self.videoPlayerView.alpha = 1.0;
+    }];
+    
+    if (self.userInteractionEnabled) {
+        [self.player play];
+    }
+}
+
+- (void)startMediaPlayback {
+    if (self.player) {
+        [self.player play];
+    }
+}
+
+- (void)pauseMediaPlayback {
+    if (self.player) {
+        [self.player pause];
+    }
+    if (self.livePhotoView && self.livePhotoView.livePhoto) {
+        [self.livePhotoView stopPlayback];
+    }
+}
+
+- (void)cleanUpPlayerObservers {
+    if (self.playerEndObserver) {
+        [[NSNotificationCenter defaultCenter] removeObserver:self.playerEndObserver];
+        self.playerEndObserver = nil;
+    }
+}
+
+- (void)tearDownMediaPlayback {
+    [self pauseMediaPlayback];
+    [self cleanUpPlayerObservers];
+    
+    if (self.player) {
+        [self.player replaceCurrentItemWithPlayerItem:nil];
+        self.videoPlayerView.player = nil;
+        self.player = nil;
+    }
+    
+    self.videoPlayerView.hidden = YES;
+    self.videoPlayerView.alpha = 0.0;
+    
+    if (self.livePhotoView) {
+        self.livePhotoView.livePhoto = nil;
+        self.livePhotoView.hidden = YES;
+        self.livePhotoView.alpha = 0.0;
+    }
+    
+    self.volumePillView.hidden = YES;
+    self.associatedAsset = nil;
+}
+
+- (void)dealloc {
+    [self cleanUpPlayerObservers];
+}
+
 #pragma mark - Gesture Handling
 
 - (void)handlePan:(UIPanGestureRecognizer *)gesture {
@@ -214,6 +476,7 @@
             self.originalCenter = self.center;
             self.hasTriggeredThresholdHaptic = NO;
             [self.feedbackGenerator prepare];
+            [self pauseMediaPlayback];
             break;
         }
             
@@ -304,7 +567,9 @@
         self.keepBadgeLabel.alpha = 0.0;
         self.deleteBadgeLabel.alpha = 0.0;
         self.colorOverlayView.alpha = 0.0;
-    } completion:nil];
+    } completion:^(BOOL finished) {
+        [self startMediaPlayback]; // Keep playing once the card is back in place
+    }];
 }
 
 - (void)animateOffScreenToLeft {
