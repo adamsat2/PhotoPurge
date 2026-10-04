@@ -7,6 +7,7 @@
 #import "PPCardView.h"
 #import "PPCompletionView.h"
 #import "PPPermissionView.h"
+#import "PPStorageManager.h"
 #import <Photos/Photos.h>
 
 typedef NS_ENUM(NSInteger, PPSwipeActionType) {
@@ -57,6 +58,10 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 @property (nonatomic, strong, nullable) PPPermissionView *permissionView;
 @property (nonatomic, strong) PHCachingImageManager *cachingImageManager;
 @property (nonatomic, assign) NSInteger previousPreheatIndex;
+@property (nonatomic, assign) PPPhotoFilterType currentFilterType;
+@property (nonatomic, strong) UIBarButtonItem *filterBarButton;
+@property (nonatomic, strong) UIBarButtonItem *storageBarButtonItem;
+@property (nonatomic, strong) UILabel *storagePillLabel;
 
 @end
 
@@ -66,6 +71,12 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor systemGray6Color];
     self.title = @"PhotoPurge";
+    
+    self.currentFilterType = PPPhotoFilterTypeAllPhotos;
+    [self updateNavigationTitleForFilter:self.currentFilterType];
+    [self setupFilterBarButton];
+    [self setupStorageIndicator];
+    
     self.currentIndex = 0;
     self.previousPreheatIndex = -1;
     self.cachingImageManager = [[PHCachingImageManager alloc] init];
@@ -84,6 +95,151 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     [self evaluatePhotoAuthorizationStatus];
 }
 
+- (void)setupStorageIndicator {
+    UIView *containerView = [[UIView alloc] initWithFrame:CGRectZero];
+    containerView.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    containerView.backgroundColor = [UIColor clearColor];
+    containerView.layer.cornerRadius = 14.0;
+    containerView.layer.borderWidth = 1.0;
+    containerView.layer.borderColor = [[UIColor separatorColor] CGColor];
+    containerView.clipsToBounds = YES;
+    
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.axis = UILayoutConstraintAxisHorizontal;
+    stack.alignment = UIStackViewAlignmentCenter;
+    stack.spacing = 5.0;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [containerView addSubview:stack];
+    
+    // Storage icon
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:11 weight:UIImageSymbolWeightSemibold];
+    UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"internaldrive" withConfiguration:config]];
+    iconView.tintColor = [UIColor secondaryLabelColor];
+    iconView.contentMode = UIViewContentModeScaleAspectFit;
+    [stack addArrangedSubview:iconView];
+    
+    // Formatted text label
+    self.storagePillLabel = [[UILabel alloc] init];
+    self.storagePillLabel.font = [UIFont monospacedDigitSystemFontOfSize:12 weight:UIFontWeightSemibold];
+    self.storagePillLabel.textColor = [UIColor labelColor];
+    [self updateStoragePillText];
+    [stack addArrangedSubview:self.storagePillLabel];
+    
+    // Internal padding to preserve pill structure
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.topAnchor constraintEqualToAnchor:containerView.topAnchor constant:4.0],
+        [stack.bottomAnchor constraintEqualToAnchor:containerView.bottomAnchor constant:-4.0],
+        [stack.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:10.0],
+        [stack.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor constant:-10.0]
+    ]];
+    
+    self.storageBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:containerView];
+    self.navigationItem.leftBarButtonItem = self.storageBarButtonItem;
+}
+
+- (void)updateStoragePillText {
+    NSString *formattedSize = [[PPStorageManager sharedManager] formattedTotalBytesReclaimed];
+    self.storagePillLabel.text = formattedSize;
+}
+
+- (void)setupFilterBarButton {
+    self.filterBarButton = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"line.3.horizontal.decrease.circle"]
+                                                             menu:[self buildFilterMenu]];
+    self.navigationItem.rightBarButtonItem = self.filterBarButton;
+}
+
+- (void)updateNavigationTitleForFilter:(PPPhotoFilterType)filterType {
+    switch (filterType) {
+        case PPPhotoFilterTypeAllPhotos:
+            self.title = @"All Photos";
+            break;
+        case PPPhotoFilterTypeScreenshots:
+            self.title = @"Screenshots";
+            break;
+        case PPPhotoFilterTypeVideos:
+            self.title = @"Videos";
+            break;
+        case PPPhotoFilterTypeLivePhotos:
+            self.title = @"Live Photos";
+            break;
+    }
+}
+
+- (UIMenu *)buildFilterMenu {
+    __weak typeof(self) weakSelf = self;
+    
+    UIAction *allPhotosAction = [UIAction actionWithTitle:@"All Photos"
+                                                    image:[UIImage systemImageNamed:@"photo.on.rectangle.angled"]
+                                               identifier:nil
+                                                  handler:^(__kindof UIAction * _Nonnull action) {
+        [weakSelf requestSwitchToFilter:PPPhotoFilterTypeAllPhotos];
+    }];
+    
+    UIAction *screenshotsAction = [UIAction actionWithTitle:@"Screenshots"
+                                                      image:[UIImage systemImageNamed:@"camera.viewfinder"]
+                                                 identifier:nil
+                                                    handler:^(__kindof UIAction * _Nonnull action) {
+        [weakSelf requestSwitchToFilter:PPPhotoFilterTypeScreenshots];
+    }];
+    
+    UIAction *videosAction = [UIAction actionWithTitle:@"Videos"
+                                                 image:[UIImage systemImageNamed:@"video.fill"]
+                                            identifier:nil
+                                               handler:^(__kindof UIAction * _Nonnull action) {
+        [weakSelf requestSwitchToFilter:PPPhotoFilterTypeVideos];
+    }];
+    
+    UIAction *livePhotosAction = [UIAction actionWithTitle:@"Live Photos"
+                                                     image:[UIImage systemImageNamed:@"livephoto"]
+                                                identifier:nil
+                                                   handler:^(__kindof UIAction * _Nonnull action) {
+        [weakSelf requestSwitchToFilter:PPPhotoFilterTypeLivePhotos];
+    }];
+    // Set checked state for the active filter
+    allPhotosAction.state = (self.currentFilterType == PPPhotoFilterTypeAllPhotos) ? UIMenuElementStateOn : UIMenuElementStateOff;
+    screenshotsAction.state = (self.currentFilterType == PPPhotoFilterTypeScreenshots) ? UIMenuElementStateOn : UIMenuElementStateOff;
+    videosAction.state = (self.currentFilterType == PPPhotoFilterTypeVideos) ? UIMenuElementStateOn : UIMenuElementStateOff;
+    livePhotosAction.state = (self.currentFilterType == PPPhotoFilterTypeLivePhotos) ? UIMenuElementStateOn : UIMenuElementStateOff;
+    
+    return [UIMenu menuWithTitle:@"Filter Library" children:@[allPhotosAction, screenshotsAction, videosAction, livePhotosAction]];
+}
+
+- (void)requestSwitchToFilter:(PPPhotoFilterType)targetFilter {
+    if (self.currentFilterType == targetFilter) {
+        return;
+    }
+    
+    if (self.pendingDeletionAssets.count > 0) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Uncommitted Deletions"
+                                                                       message:[NSString stringWithFormat:@"You have %lu item(s) staged for deletion. Switching filters will clear your staged purges.", (unsigned long)self.pendingDeletionAssets.count]
+                                                                preferredStyle:UIAlertControllerStyleActionSheet];
+        
+        [alert addAction:[UIAlertAction actionWithTitle:@"Commit Purges First" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+            [self executePhotoLibraryDeletionWithCompletion:^{
+                [self applyFilter:targetFilter];
+            }];
+        }]];
+        
+        [alert addAction:[UIAlertAction actionWithTitle:@"Discard Staged & Switch" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            [self.pendingDeletionAssets removeAllObjects];
+            [self.actionHistory removeAllObjects];
+            [self applyFilter:targetFilter];
+        }]];
+        
+        [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+        
+        // iPad popover presentation safety
+        if (alert.popoverPresentationController) {
+            alert.popoverPresentationController.barButtonItem = self.filterBarButton;
+        }
+        
+        [self presentViewController:alert animated:YES completion:nil];
+    } else {
+        [self applyFilter:targetFilter];
+    }
+}
+
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [[PHPhotoLibrary sharedPhotoLibrary] unregisterChangeObserver:self];
@@ -95,6 +251,28 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     [self evaluatePhotoAuthorizationStatus];
 }
 
+- (void)applyFilter:(PPPhotoFilterType)filterType {
+    self.currentFilterType = filterType;
+    [self updateNavigationTitleForFilter:filterType];
+    self.filterBarButton.menu = [self buildFilterMenu]; // Update checkmark in menu
+    
+    // Teardown active cards and flush caches
+    [self discardCardView:self.topCardView];
+    self.topCardView = nil;
+    [self discardCardView:self.bottomCardView];
+    self.bottomCardView = nil;
+    
+    if (self.completionView) {
+        [self.completionView removeFromSuperview];
+        self.completionView = nil;
+    }
+    
+    [self.cachingImageManager stopCachingImagesForAllAssets];
+    
+    // Fetch assets matching the filter
+    [self loadPhotoLibraryAssets];
+}
+
 - (void)loadPhotoLibraryAssets {
     [[PHPhotoLibrary sharedPhotoLibrary] registerChangeObserver:self];
     
@@ -103,14 +281,63 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     // Sort by creationDate in descending order
     options.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"creationDate" ascending:NO]];
     
-    self.assets = [PHAsset fetchAssetsWithOptions:options];
+    switch (self.currentFilterType) {
+        case PPPhotoFilterTypeAllPhotos: {
+            self.assets = [PHAsset fetchAssetsWithOptions:options];
+            break;
+        }
+        case PPPhotoFilterTypeScreenshots: {
+            PHFetchResult<PHAssetCollection *> *smartAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeSmartAlbum
+                                                                                                       subtype:PHAssetCollectionSubtypeSmartAlbumScreenshots
+                                                                                                       options:nil];
+            if (smartAlbums.firstObject) {
+                self.assets = [PHAsset fetchAssetsInAssetCollection:smartAlbums.firstObject options:options];
+            } else {
+                // Fallback predicate if smart album subtype is unavailable
+                options.predicate = [NSPredicate predicateWithFormat:@"(mediaSubtype & %d) != 0", PHAssetMediaSubtypePhotoScreenshot];
+                self.assets = [PHAsset fetchAssetsWithOptions:options];
+            }
+            break;
+        }
+        case PPPhotoFilterTypeVideos: {
+            options.predicate = [NSPredicate predicateWithFormat:@"mediaType == %d", PHAssetMediaTypeVideo];
+            self.assets = [PHAsset fetchAssetsWithOptions:options];
+            break;
+        }
+        case PPPhotoFilterTypeLivePhotos: {
+            PHFetchResult<PHAssetCollection *> *smartAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeSmartAlbum
+                                                                                                       subtype:PHAssetCollectionSubtypeSmartAlbumLivePhotos
+                                                                                                       options:nil];
+            if (smartAlbums.firstObject) {
+                self.assets = [PHAsset fetchAssetsInAssetCollection:smartAlbums.firstObject options:options];
+            } else {
+                options.predicate = [NSPredicate predicateWithFormat:@"(mediaSubtype & %d) != 0", PHAssetMediaSubtypePhotoLive];
+                self.assets = [PHAsset fetchAssetsWithOptions:options];
+            }
+            break;
+        }
+    }
+    
     self.currentIndex = 0;
     self.previousPreheatIndex = -1;
     
-    [self.cachingImageManager stopCachingImagesForAllAssets];
+    [self.pendingDeletionAssets removeAllObjects];
+    [self.actionHistory removeAllObjects];
+    
     [self updatePreheatWindow];
     
-    [self setupInitialStack];
+    if (self.assets.count == 0) {
+        [self showCompletionView];
+    } else {
+        [UIView transitionWithView:self.view
+                          duration:0.3
+                           options:UIViewAnimationOptionTransitionCrossDissolve
+                        animations:^{
+            [self setupInitialStack];
+        } completion:nil];
+    }
+    
+    [self updateControlClusterStates];
 }
 
 #pragma mark - Stack Geometry & Instantiation
@@ -529,34 +756,63 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 }
 
 - (void)executePhotoLibraryDeletion {
+    [self executePhotoLibraryDeletionWithCompletion:nil];
+}
+
+- (void)executePhotoLibraryDeletionWithCompletion:(nullable void (^)(void))completion {
+    if (self.pendingDeletionAssets.count == 0) {
+        if (completion) completion();
+        return;
+    }
+    
     NSArray<PHAsset *> *assetsToDelete = [self.pendingDeletionAssets copy];
     
-    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-        // Requests OS deletion sheet from user
-        [PHAssetChangeRequest deleteAssets:assetsToDelete];
-    } completionHandler:^(BOOL success, NSError * _Nullable error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (success) {
-                
-                // Clear the staging queue
-                [self.pendingDeletionAssets removeAllObjects];
-                
-                // Filter out items whose assets were deleted
-                NSPredicate *keepPredicate = [NSPredicate predicateWithBlock:^BOOL(PPSwipeHistoryItem *item, NSDictionary *bindings) {
-                    return ![assetsToDelete containsObject:item.asset];
-                }];
-                [self.actionHistory filterUsingPredicate:keepPredicate];
-                
-                // Update controls
-                [self updateControlClusterStates];
-                
-                // Provide success haptic
-                UINotificationFeedbackGenerator *notifier = [[UINotificationFeedbackGenerator alloc] init];
-                [notifier notificationOccurred:UINotificationFeedbackTypeSuccess];
-            } else if (error) {
-                NSLog(@"PhotoPurge: Error deleting assets: %@", error.localizedDescription);
-            }
-        });
+    [[PPStorageManager sharedManager] calculateByteSizeForAssets:assetsToDelete completion:^(int64_t totalBytes) {
+        
+        // Request native system confirmation dialog
+        [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+            [PHAssetChangeRequest deleteAssets:assetsToDelete];
+        } completionHandler:^(BOOL success, NSError * _Nullable error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (success) {
+                    // Increment lifetime counter after confirmed deletion
+                    [[PPStorageManager sharedManager] recordReclaimedBytes:totalBytes];
+                    
+                    // Update the pill UI with an animated bounce
+                    [UIView transitionWithView:self.storagePillLabel
+                                      duration:0.25
+                                       options:UIViewAnimationOptionTransitionCrossDissolve
+                                    animations:^{
+                        [self updateStoragePillText];
+                    } completion:^(BOOL finished) {
+                        [UIView animateWithDuration:0.15 animations:^{
+                            self.storageBarButtonItem.customView.transform = CGAffineTransformMakeScale(1.15, 1.15);
+                        } completion:^(BOOL fin) {
+                            [UIView animateWithDuration:0.15 animations:^{
+                                self.storageBarButtonItem.customView.transform = CGAffineTransformIdentity;
+                            }];
+                        }];
+                    }];
+                    
+                    // Reconcile pending arrays & history
+                    [self.pendingDeletionAssets removeObjectsInArray:assetsToDelete];
+                    
+                    NSPredicate *predicate = [NSPredicate predicateWithBlock:^BOOL(PPSwipeHistoryItem *item, NSDictionary *bindings) {
+                        return ![assetsToDelete containsObject:item.asset];
+                    }];
+                    [self.actionHistory filterUsingPredicate:predicate];
+                    
+                    [self updateControlClusterStates];
+                    
+                    if (completion) {
+                        completion();
+                    }
+                } else {
+                    NSLog(@"PhotoPurge: Deletion cancelled or failed: %@", error.localizedDescription);
+                    // Dont increment counter if user cancelled or system failed
+                }
+            });
+        }];
     }];
 }
 
