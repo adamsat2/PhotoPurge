@@ -804,6 +804,13 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
                     
                     [self updateControlClusterStates];
                     
+                    if (self.completionView && !completion) {
+                        [self.completionView configureWithStagedCount:0
+                                                         stagedBytes:0
+                                                       lifetimeBytes:[PPStorageManager sharedManager].totalBytesReclaimed];
+                        [self.completionView updateTitle:@"All Caught Up"];
+                    }
+                    
                     if (completion) {
                         completion();
                     }
@@ -828,12 +835,32 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     self.completionView.delegate = self;
     self.completionView.alpha = 0.0;
     
-    [self.completionView configureWithTotalReviewed:self.assets.count
-                                       pendingCount:self.pendingDeletionAssets.count];
-    
     [self.view addSubview:self.completionView];
-    
     [self updateControlClusterStates];
+    
+    NSUInteger stagedCount = self.pendingDeletionAssets.count;
+    int64_t lifetimeBytes = [PPStorageManager sharedManager].totalBytesReclaimed;
+    
+    if (stagedCount > 0) {
+        // Set initial state with placeholder while calculation is pending
+        [self.completionView showCalculatingStateWithStagedCount:stagedCount
+                                                   lifetimeBytes:lifetimeBytes];
+        
+        NSArray<PHAsset *> *stagedAssets = [self.pendingDeletionAssets copy];
+        __weak typeof(self) weakSelf = self;
+        [[PPStorageManager sharedManager] calculateByteSizeForAssets:stagedAssets completion:^(int64_t totalBytes) {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf || !strongSelf.completionView) return;
+            
+            [strongSelf.completionView configureWithStagedCount:strongSelf.pendingDeletionAssets.count
+                                                    stagedBytes:totalBytes
+                                                  lifetimeBytes:[PPStorageManager sharedManager].totalBytesReclaimed];
+        }];
+    } else {
+        [self.completionView configureWithStagedCount:0
+                                         stagedBytes:0
+                                       lifetimeBytes:lifetimeBytes];
+    }
     
     [UIView animateWithDuration:0.3 animations:^{
         self.completionView.alpha = 1.0;
@@ -843,7 +870,23 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 #pragma mark - PPCompletionViewDelegate
 
 - (void)completionViewDidRequestPurge:(PPCompletionView *)completionView {
-    [self presentBatchDeletionAlert];
+    __weak typeof(self) weakSelf = self;
+    [self executePhotoLibraryDeletionWithCompletion:^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        
+        [strongSelf.completionView configureWithStagedCount:0
+                                                stagedBytes:0
+                                              lifetimeBytes:[PPStorageManager sharedManager].totalBytesReclaimed];
+        [strongSelf.completionView updateTitle:@"All Caught Up"];
+        
+        UINotificationFeedbackGenerator *feedbackGenerator = [[UINotificationFeedbackGenerator alloc] init];
+        [feedbackGenerator notificationOccurred:UINotificationFeedbackTypeSuccess];
+    }];
+}
+
+- (void)completionViewDidRequestCommitPurges:(PPCompletionView *)completionView {
+    [self completionViewDidRequestPurge:completionView];
 }
 
 - (void)completionViewDidRequestRestart:(PPCompletionView *)completionView {

@@ -17,14 +17,27 @@ NS_ASSUME_NONNULL_BEGIN
 // Triggered if there are pending deletions and user requests immediate batch purge
 - (void)completionViewDidRequestPurge:(PPCompletionView *)completionView;
 
+@optional
+// Optional specific handler for committing purges directly from the completion view
+- (void)completionViewDidRequestCommitPurges:(PPCompletionView *)completionView;
+
 @end
 
 @interface PPCompletionView : UIView
 
 @property (nonatomic, weak, nullable) id<PPCompletionViewDelegate> delegate;
+@property (nonatomic, strong, readonly) UILabel *titleLabel;
 
-// totalReviewed is the total count of photos reviewed in this session.
-// pendingCount is the number of items currently staged for deletion.
+- (void)configureWithStagedCount:(NSUInteger)stagedCount
+                    stagedBytes:(int64_t)stagedBytes
+                  lifetimeBytes:(int64_t)lifetimeBytes;
+
+- (void)showCalculatingStateWithStagedCount:(NSUInteger)stagedCount
+                              lifetimeBytes:(int64_t)lifetimeBytes;
+
+- (void)updateTitle:(NSString *)title;
+
+// Legacy configuration method maintained for backward compatibility
 - (void)configureWithTotalReviewed:(NSUInteger)totalReviewed
                       pendingCount:(NSUInteger)pendingCount;
 
