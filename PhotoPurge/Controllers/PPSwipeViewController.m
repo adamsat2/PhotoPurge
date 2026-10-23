@@ -65,6 +65,8 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 @property (nonatomic, strong) UIBarButtonItem *storageBarButtonItem;
 @property (nonatomic, strong) UIView *storageContainerView;
 @property (nonatomic, strong) UILabel *storagePillLabel;
+@property (nonatomic, strong) UIView *cardContainerView;
+@property (nonatomic, strong) NSMutableArray<PPCardView *> *animatingCards;
 
 @end
 
@@ -85,8 +87,14 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     self.cachingImageManager = [[PHCachingImageManager alloc] init];
     self.pendingDeletionAssets = [[NSMutableArray alloc] init];
     self.actionHistory = [[NSMutableArray alloc] init];
+    self.animatingCards = [[NSMutableArray alloc] init];
     
     self.cachingImageManager.allowsCachingHighQualityImages = YES;
+    
+    self.cardContainerView = [[UIView alloc] initWithFrame:self.view.bounds];
+    self.cardContainerView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.cardContainerView.clipsToBounds = NO;
+    [self.view addSubview:self.cardContainerView];
     
     [self setupActionButtons];
     
@@ -302,10 +310,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     self.filterBarButton.menu = [self buildFilterMenu];
     
     // Teardown active cards and flush caches
-    [self discardCardView:self.topCardView];
-    self.topCardView = nil;
-    [self discardCardView:self.bottomCardView];
-    self.bottomCardView = nil;
+    [self discardAllCards];
     
     if (self.completionView) {
         [self.completionView removeFromSuperview];
@@ -377,10 +382,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     self.filterBarButton.menu = [self buildFilterMenu]; // Update checkmark in menu
     
     // Teardown active cards and flush caches
-    [self discardCardView:self.topCardView];
-    self.topCardView = nil;
-    [self discardCardView:self.bottomCardView];
-    self.bottomCardView = nil;
+    [self discardAllCards];
     
     if (self.completionView) {
         [self.completionView removeFromSuperview];
@@ -455,8 +457,10 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     [self updatePreheatWindow];
     
     if (self.assets.count == 0) {
+        [self discardAllCards];
         [self showCompletionView];
     } else {
+        [self discardAllCards];
         [UIView transitionWithView:self.view
                           duration:0.3
                            options:UIViewAnimationOptionTransitionCrossDissolve
@@ -528,14 +532,14 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
         self.bottomCardView = [self createCardForIndex:self.currentIndex + 1 isInteractive:NO];
         if (self.bottomCardView) {
             self.bottomCardView.transform = CGAffineTransformMakeScale(0.95, 0.95);
-            [self.view addSubview:self.bottomCardView];
+            [self.cardContainerView addSubview:self.bottomCardView];
         }
     }
     
     // Create top card and place it above bottom card
     self.topCardView = [self createCardForIndex:self.currentIndex isInteractive:YES];
     if (self.topCardView) {
-        [self.view addSubview:self.topCardView];
+        [self.cardContainerView addSubview:self.topCardView];
     }
 }
 
@@ -575,9 +579,9 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
             
             // Insert underneath the current top card
             if (self.topCardView) {
-                [self.view insertSubview:self.bottomCardView belowSubview:self.topCardView];
+                [self.cardContainerView insertSubview:self.bottomCardView belowSubview:self.topCardView];
             } else {
-                [self.view addSubview:self.bottomCardView];
+                [self.cardContainerView addSubview:self.bottomCardView];
             }
         }
     } else if (!self.topCardView) {
@@ -591,6 +595,15 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 #pragma mark - PPCardViewDelegate
 
 - (void)cardViewDidSwipeLeft:(PPCardView *)cardView {
+    if (cardView != self.topCardView) {
+        [self discardCardView:cardView];
+        return;
+    }
+    
+    PPCardView *cardToDismiss = self.topCardView;
+    cardToDismiss.userInteractionEnabled = NO;
+    cardToDismiss.delegate = nil;
+    
     if (self.currentIndex < self.assets.count) {
         PHAsset *swipedAsset = self.assets[self.currentIndex];
         [self.pendingDeletionAssets addObject:swipedAsset];
@@ -602,9 +615,27 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     
     [self advanceStack];
     [self updateControlClusterStates];
+    
+    [self.animatingCards addObject:cardToDismiss];
+    __weak typeof(self) weakSelf = self;
+    [cardToDismiss animateOffScreenToLeftWithCompletion:^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf.animatingCards removeObject:cardToDismiss];
+        [strongSelf discardCardView:cardToDismiss];
+    }];
 }
 
 - (void)cardViewDidSwipeRight:(PPCardView *)cardView {
+    if (cardView != self.topCardView) {
+        [self discardCardView:cardView];
+        return;
+    }
+    
+    PPCardView *cardToDismiss = self.topCardView;
+    cardToDismiss.userInteractionEnabled = NO;
+    cardToDismiss.delegate = nil;
+    
     if (self.currentIndex < self.assets.count) {
         PHAsset *swipedAsset = self.assets[self.currentIndex];
         PPSwipeHistoryItem *item = [PPSwipeHistoryItem itemWithAction:PPSwipeActionTypeKeep
@@ -615,6 +646,15 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     
     [self advanceStack];
     [self updateControlClusterStates];
+    
+    [self.animatingCards addObject:cardToDismiss];
+    __weak typeof(self) weakSelf = self;
+    [cardToDismiss animateOffScreenToRightWithCompletion:^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf.animatingCards removeObject:cardToDismiss];
+        [strongSelf discardCardView:cardToDismiss];
+    }];
 }
 
 #pragma mark - Action Buttons
@@ -769,6 +809,13 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
         return;
     }
     
+    // Stop and discard any in-flight animating cards so they don't interfere
+    for (PPCardView *animatingCard in [self.animatingCards copy]) {
+        [animatingCard.layer removeAllAnimations];
+        [self discardCardView:animatingCard];
+    }
+    [self.animatingCards removeAllObjects];
+    
     // Dismiss completion card (if visible)
     if (self.completionView) {
         [self.completionView removeFromSuperview];
@@ -811,7 +858,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
             -[UIScreen mainScreen].bounds.size.width;
             
         restoredCard.center = CGPointMake(offscreenX, restoredCard.center.y);
-        [self.view addSubview:restoredCard];
+        [self.cardContainerView addSubview:restoredCard];
         
         [UIView animateWithDuration:0.35
                               delay:0.0
@@ -831,13 +878,13 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 }
 
 - (void)purgeButtonTapped {
-    if (self.topCardView) {
+    if (self.topCardView && !self.topCardView.isDismissing) {
         [self.topCardView swipeLeftProgrammatically];
     }
 }
 
 - (void)keepButtonTapped {
-    if (self.topCardView) {
+    if (self.topCardView && !self.topCardView.isDismissing) {
         [self.topCardView swipeRightProgrammatically];
     }
 }
@@ -1023,6 +1070,8 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     } completion:^(BOOL finished) {
         [self.completionView removeFromSuperview];
         self.completionView = nil;
+        
+        [self discardAllCards];
         
         self.currentIndex = 0;
         self.previousPreheatIndex = -1;
@@ -1283,6 +1332,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 - (void)discardCardView:(PPCardView *)cardView {
     if (!cardView) return;
     
+    cardView.delegate = nil;
     [cardView tearDownMediaPlayback];
     
     if (cardView.imageRequestID != PHInvalidImageRequestID) {
@@ -1290,6 +1340,25 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
         cardView.imageRequestID = PHInvalidImageRequestID;
     }
     [cardView removeFromSuperview];
+}
+
+- (void)discardAllCards {
+    for (PPCardView *animatingCard in [self.animatingCards copy]) {
+        [animatingCard.layer removeAllAnimations];
+        [self discardCardView:animatingCard];
+    }
+    [self.animatingCards removeAllObjects];
+    
+    [self discardCardView:self.topCardView];
+    self.topCardView = nil;
+    [self discardCardView:self.bottomCardView];
+    self.bottomCardView = nil;
+    
+    for (UIView *subview in [self.cardContainerView.subviews copy]) {
+        if ([subview isKindOfClass:[PPCardView class]]) {
+            [self discardCardView:(PPCardView *)subview];
+        }
+    }
 }
 
 @end

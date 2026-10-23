@@ -53,6 +53,7 @@
     if (self) {
         self.backgroundColor = [PPTheme cardSurfaceColor];
         self.isMuted = YES;
+        self.isDismissing = NO;
         
         // Card styling
         self.layer.cornerRadius = 16.0;
@@ -477,6 +478,10 @@
 #pragma mark - Gesture Handling
 
 - (void)handlePan:(UIPanGestureRecognizer *)gesture {
+    if (self.isDismissing) {
+        return;
+    }
+    
     // Current finger translation relative to where the drag started
     CGPoint translation = [gesture translationInView:self.superview];
     
@@ -546,10 +551,14 @@
             
             if (xTranslation > threshold || velocity.x > flingVelocity) {
                 // Swipe Right (Keep)
-                [self animateOffScreenToRight];
+                self.isDismissing = YES;
+                self.userInteractionEnabled = NO;
+                [self.delegate cardViewDidSwipeRight:self];
             } else if (xTranslation < -threshold || velocity.x < -flingVelocity) {
                 // Swipe Left (Delete)
-                [self animateOffScreenToLeft];
+                self.isDismissing = YES;
+                self.userInteractionEnabled = NO;
+                [self.delegate cardViewDidSwipeLeft:self];
             } else {
                 // Below threshold: snap back with spring damping
                 [self snapBackToCenter];
@@ -581,60 +590,70 @@
     }];
 }
 
-- (void)animateOffScreenToLeft {
+- (void)animateOffScreenToLeftWithCompletion:(nullable void (^)(void))completion {
+    self.isDismissing = YES;
+    self.userInteractionEnabled = NO;
+    
     CGFloat offscreenX = -[UIScreen mainScreen].bounds.size.width - 200.0;
     
-    [UIView animateWithDuration:0.3
+    [UIView animateWithDuration:0.25
                           delay:0.0
                         options:UIViewAnimationOptionCurveEaseIn
                      animations:^{
+        self.deleteBadgeLabel.alpha = 1.0;
+        self.colorOverlayView.backgroundColor = [PPTheme purgeActionColor];
+        self.colorOverlayView.alpha = 0.28;
         self.center = CGPointMake(offscreenX, self.center.y);
+        self.transform = CGAffineTransformMakeRotation(-0.25);
     } completion:^(BOOL finished) {
-        [self removeFromSuperview];
-        [self.delegate cardViewDidSwipeLeft:self];
+        if (completion) {
+            completion();
+        }
     }];
 }
 
-- (void)animateOffScreenToRight {
+- (void)animateOffScreenToRightWithCompletion:(nullable void (^)(void))completion {
+    self.isDismissing = YES;
+    self.userInteractionEnabled = NO;
+    
     CGFloat offscreenX = [UIScreen mainScreen].bounds.size.width * 2.0;
     
-    [UIView animateWithDuration:0.3
+    [UIView animateWithDuration:0.25
                           delay:0.0
                         options:UIViewAnimationOptionCurveEaseIn
                      animations:^{
+        self.keepBadgeLabel.alpha = 1.0;
+        self.colorOverlayView.backgroundColor = [PPTheme keepActionColor];
+        self.colorOverlayView.alpha = 0.28;
         self.center = CGPointMake(offscreenX, self.center.y);
+        self.transform = CGAffineTransformMakeRotation(0.25);
     } completion:^(BOOL finished) {
-        [self removeFromSuperview];
-        [self.delegate cardViewDidSwipeRight:self];
+        if (completion) {
+            completion();
+        }
     }];
 }
 
 #pragma mark - Programmatic Actions
 
 - (void)swipeLeftProgrammatically {
+    if (self.isDismissing) {
+        return;
+    }
+    self.isDismissing = YES;
+    self.userInteractionEnabled = NO;
     [self.feedbackGenerator impactOccurred];
-    
-    // Reveal purge badge and red tint immediately for animation
-    [UIView animateWithDuration:0.1 animations:^{
-        self.deleteBadgeLabel.alpha = 1.0;
-        self.colorOverlayView.backgroundColor = [UIColor systemRedColor];
-        self.colorOverlayView.alpha = 0.28;
-    } completion:^(BOOL finished) {
-        [self animateOffScreenToLeft];
-    }];
+    [self.delegate cardViewDidSwipeLeft:self];
 }
 
 - (void)swipeRightProgrammatically {
+    if (self.isDismissing) {
+        return;
+    }
+    self.isDismissing = YES;
+    self.userInteractionEnabled = NO;
     [self.feedbackGenerator impactOccurred];
-    
-    // Reveal keep badge and green tint immediately for animation
-    [UIView animateWithDuration:0.1 animations:^{
-        self.keepBadgeLabel.alpha = 1.0;
-        self.colorOverlayView.backgroundColor = [UIColor systemGreenColor];
-        self.colorOverlayView.alpha = 0.28;
-    } completion:^(BOOL finished) {
-        [self animateOffScreenToRight];
-    }];
+    [self.delegate cardViewDidSwipeRight:self];
 }
 
 @end

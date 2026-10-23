@@ -22,6 +22,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, weak, nullable) id<PPCardViewDelegate> delegate; // Weak to avoid a retain cycle
 @property (nonatomic, copy, nullable) NSString *assetIdentifier;
 @property (nonatomic, assign) PHImageRequestID imageRequestID;
+@property (nonatomic, assign) BOOL isDismissing;
+@property (nonatomic, strong, readonly) UIImpactFeedbackGenerator *feedbackGenerator;
 
 - (void)configureWithImage:(UIImage *)image;
 - (void)configureMetadataWithAsset:(PHAsset *)asset;
@@ -31,6 +33,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)tearDownMediaPlayback;
 - (void)swipeLeftProgrammatically;
 - (void)swipeRightProgrammatically;
+- (void)animateOffScreenToLeftWithCompletion:(nullable void (^)(void))completion;
+- (void)animateOffScreenToRightWithCompletion:(nullable void (^)(void))completion;
 
 @end
 
