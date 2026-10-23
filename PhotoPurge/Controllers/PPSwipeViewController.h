@@ -11,7 +11,8 @@ typedef NS_ENUM(NSInteger, PPPhotoFilterType) {
     PPPhotoFilterTypeAllPhotos,
     PPPhotoFilterTypeScreenshots,
     PPPhotoFilterTypeVideos,
-    PPPhotoFilterTypeLivePhotos
+    PPPhotoFilterTypeLivePhotos,
+    PPPhotoFilterTypeCustomAlbum
 };
 
 @interface PPSwipeViewController : UIViewController

@@ -59,6 +59,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 @property (nonatomic, strong) PHCachingImageManager *cachingImageManager;
 @property (nonatomic, assign) NSInteger previousPreheatIndex;
 @property (nonatomic, assign) PPPhotoFilterType currentFilterType;
+@property (nonatomic, strong, nullable) PHAssetCollection *selectedCustomAlbum;
 @property (nonatomic, strong) UIBarButtonItem *filterBarButton;
 @property (nonatomic, strong) UIBarButtonItem *storageBarButtonItem;
 @property (nonatomic, strong) UILabel *storagePillLabel;
@@ -163,12 +164,16 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
         case PPPhotoFilterTypeLivePhotos:
             self.title = @"Live Photos";
             break;
+        case PPPhotoFilterTypeCustomAlbum:
+            self.title = self.selectedCustomAlbum.localizedTitle.length > 0 ? self.selectedCustomAlbum.localizedTitle : @"Album";
+            break;
     }
 }
 
 - (UIMenu *)buildFilterMenu {
     __weak typeof(self) weakSelf = self;
     
+    // Section 1 (Smart Filters): All Photos, Screenshots, Videos, and Live Photos
     UIAction *allPhotosAction = [UIAction actionWithTitle:@"All Photos"
                                                     image:[UIImage systemImageNamed:@"photo.on.rectangle.angled"]
                                                identifier:nil
@@ -196,13 +201,117 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
                                                    handler:^(__kindof UIAction * _Nonnull action) {
         [weakSelf requestSwitchToFilter:PPPhotoFilterTypeLivePhotos];
     }];
-    // Set checked state for the active filter
+    
     allPhotosAction.state = (self.currentFilterType == PPPhotoFilterTypeAllPhotos) ? UIMenuElementStateOn : UIMenuElementStateOff;
     screenshotsAction.state = (self.currentFilterType == PPPhotoFilterTypeScreenshots) ? UIMenuElementStateOn : UIMenuElementStateOff;
     videosAction.state = (self.currentFilterType == PPPhotoFilterTypeVideos) ? UIMenuElementStateOn : UIMenuElementStateOff;
     livePhotosAction.state = (self.currentFilterType == PPPhotoFilterTypeLivePhotos) ? UIMenuElementStateOn : UIMenuElementStateOff;
     
-    return [UIMenu menuWithTitle:@"Filter Library" children:@[allPhotosAction, screenshotsAction, videosAction, livePhotosAction]];
+    UIMenu *smartFiltersMenu = [UIMenu menuWithTitle:@""
+                                               image:nil
+                                          identifier:nil
+                                             options:UIMenuOptionsDisplayInline
+                                            children:@[allPhotosAction, screenshotsAction, videosAction, livePhotosAction]];
+    
+    // Section 2 (User Albums): "My Albums" submenu
+    PHFetchResult<PHAssetCollection *> *userAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeAlbum
+                                                                                              subtype:PHAssetCollectionSubtypeAlbumRegular
+                                                                                              options:nil];
+    NSMutableArray<UIMenuElement *> *albumActions = [NSMutableArray array];
+    
+    if (userAlbums.count == 0) {
+        UIAction *emptyAction = [UIAction actionWithTitle:@"No User Albums"
+                                                    image:nil
+                                               identifier:nil
+                                                  handler:^(__kindof UIAction * _Nonnull action) {}];
+        emptyAction.attributes = UIMenuElementAttributesDisabled;
+        [albumActions addObject:emptyAction];
+    } else {
+        for (PHAssetCollection *album in userAlbums) {
+            NSString *albumTitle = album.localizedTitle.length > 0 ? album.localizedTitle : @"Untitled Album";
+            BOOL isSelected = (self.currentFilterType == PPPhotoFilterTypeCustomAlbum &&
+                               [self.selectedCustomAlbum.localIdentifier isEqualToString:album.localIdentifier]);
+            
+            UIAction *albumAction = [UIAction actionWithTitle:albumTitle
+                                                        image:[UIImage systemImageNamed:@"rectangle.stack"]
+                                                   identifier:nil
+                                                      handler:^(__kindof UIAction * _Nonnull action) {
+                [weakSelf requestSwitchToCustomAlbum:album];
+            }];
+            albumAction.state = isSelected ? UIMenuElementStateOn : UIMenuElementStateOff;
+            [albumActions addObject:albumAction];
+        }
+    }
+    
+    UIMenu *myAlbumsMenu = [UIMenu menuWithTitle:@"My Albums"
+                                           image:[UIImage systemImageNamed:@"folder"]
+                                      identifier:nil
+                                         options:0
+                                        children:albumActions];
+    
+    return [UIMenu menuWithTitle:@"Filter Library" children:@[smartFiltersMenu, myAlbumsMenu]];
+}
+
+- (void)requestSwitchToCustomAlbum:(PHAssetCollection *)album {
+    if (self.currentFilterType == PPPhotoFilterTypeCustomAlbum &&
+        [self.selectedCustomAlbum.localIdentifier isEqualToString:album.localIdentifier]) {
+        return;
+    }
+    
+    if (self.pendingDeletionAssets.count > 0) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Uncommitted Deletions"
+                                                                       message:[NSString stringWithFormat:@"You have %lu item(s) staged for deletion. Switching filters will clear your staged purges.", (unsigned long)self.pendingDeletionAssets.count]
+                                                                preferredStyle:UIAlertControllerStyleActionSheet];
+        
+        [alert addAction:[UIAlertAction actionWithTitle:@"Commit Purges First" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+            [self executePhotoLibraryDeletionWithCompletion:^{
+                [self applyCustomAlbumFilter:album];
+            }];
+        }]];
+        
+        [alert addAction:[UIAlertAction actionWithTitle:@"Discard Staged & Switch" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            [self.pendingDeletionAssets removeAllObjects];
+            [self.actionHistory removeAllObjects];
+            [self applyCustomAlbumFilter:album];
+        }]];
+        
+        [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+        
+        if (alert.popoverPresentationController) {
+            alert.popoverPresentationController.barButtonItem = self.filterBarButton;
+        }
+        
+        [self presentViewController:alert animated:YES completion:nil];
+    } else {
+        [self applyCustomAlbumFilter:album];
+    }
+}
+
+- (void)applyCustomAlbumFilter:(PHAssetCollection *)album {
+    self.currentFilterType = PPPhotoFilterTypeCustomAlbum;
+    self.selectedCustomAlbum = album;
+    
+    NSString *albumTitle = album.localizedTitle.length > 0 ? album.localizedTitle : @"Album";
+    self.title = albumTitle;
+    self.filterBarButton.menu = [self buildFilterMenu];
+    
+    // Teardown active cards and flush caches
+    [self discardCardView:self.topCardView];
+    self.topCardView = nil;
+    [self discardCardView:self.bottomCardView];
+    self.bottomCardView = nil;
+    
+    if (self.completionView) {
+        [self.completionView removeFromSuperview];
+        self.completionView = nil;
+    }
+    
+    [self.pendingDeletionAssets removeAllObjects];
+    [self.actionHistory removeAllObjects];
+    [self.cachingImageManager stopCachingImagesForAllAssets];
+    
+    // Fetch assets matching the album
+    [self loadPhotoLibraryAssets];
 }
 
 - (void)requestSwitchToFilter:(PPPhotoFilterType)targetFilter {
@@ -253,6 +362,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 
 - (void)applyFilter:(PPPhotoFilterType)filterType {
     self.currentFilterType = filterType;
+    self.selectedCustomAlbum = nil;
     [self updateNavigationTitleForFilter:filterType];
     self.filterBarButton.menu = [self buildFilterMenu]; // Update checkmark in menu
     
@@ -312,6 +422,14 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
                 self.assets = [PHAsset fetchAssetsInAssetCollection:smartAlbums.firstObject options:options];
             } else {
                 options.predicate = [NSPredicate predicateWithFormat:@"(mediaSubtype & %d) != 0", PHAssetMediaSubtypePhotoLive];
+                self.assets = [PHAsset fetchAssetsWithOptions:options];
+            }
+            break;
+        }
+        case PPPhotoFilterTypeCustomAlbum: {
+            if (self.selectedCustomAlbum) {
+                self.assets = [PHAsset fetchAssetsInAssetCollection:self.selectedCustomAlbum options:options];
+            } else {
                 self.assets = [PHAsset fetchAssetsWithOptions:options];
             }
             break;
