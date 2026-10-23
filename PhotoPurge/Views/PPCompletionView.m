@@ -4,6 +4,7 @@
 //
 
 #import "PPCompletionView.h"
+#import "PPTheme.h"
 
 @interface PPCompletionView ()
 
@@ -35,7 +36,7 @@
 }
 
 - (void)setupCardAppearance {
-    self.backgroundColor = [UIColor systemBackgroundColor];
+    self.backgroundColor = [PPTheme cardSurfaceColor];
     self.layer.cornerRadius = 16.0;
     self.layer.shadowColor = [UIColor blackColor].CGColor;
     self.layer.shadowOpacity = 0.12;
@@ -50,7 +51,7 @@
     UIImage *sealImage = [UIImage systemImageNamed:@"checkmark.seal.fill" withConfiguration:symbolConfig];
     
     _symbolImageView = [[UIImageView alloc] initWithImage:sealImage];
-    _symbolImageView.tintColor = [UIColor systemGreenColor];
+    _symbolImageView.tintColor = [PPTheme keepActionColor];
     _symbolImageView.contentMode = UIViewContentModeScaleAspectFit;
     _symbolImageView.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:_symbolImageView];
@@ -59,14 +60,14 @@
     _titleLabel = [[UILabel alloc] init];
     _titleLabel.text = @"All Caught Up";
     _titleLabel.font = [UIFont systemFontOfSize:24 weight:UIFontWeightBold];
-    _titleLabel.textColor = [UIColor labelColor];
+    _titleLabel.textColor = [PPTheme primaryTextColor];
     _titleLabel.textAlignment = NSTextAlignmentCenter;
     _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:_titleLabel];
     
     // Metrics container view (card-styled container)
     _metricsContainerView = [[UIView alloc] init];
-    _metricsContainerView.backgroundColor = [UIColor secondarySystemBackgroundColor];
+    _metricsContainerView.backgroundColor = [PPTheme secondarySurfaceColor];
     _metricsContainerView.layer.cornerRadius = 14.0;
     _metricsContainerView.layer.masksToBounds = YES;
     _metricsContainerView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -84,19 +85,19 @@
     // Monospaced digit metrics labels
     _stagedCountLabel = [[UILabel alloc] init];
     _stagedCountLabel.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightMedium];
-    _stagedCountLabel.textColor = [UIColor labelColor];
+    _stagedCountLabel.textColor = [PPTheme primaryTextColor];
     _stagedCountLabel.textAlignment = NSTextAlignmentCenter;
     [_metricsStackView addArrangedSubview:_stagedCountLabel];
     
     _stagedBytesLabel = [[UILabel alloc] init];
     _stagedBytesLabel.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightMedium];
-    _stagedBytesLabel.textColor = [UIColor secondaryLabelColor];
+    _stagedBytesLabel.textColor = [PPTheme secondaryTextColor];
     _stagedBytesLabel.textAlignment = NSTextAlignmentCenter;
     [_metricsStackView addArrangedSubview:_stagedBytesLabel];
     
     _lifetimeBytesLabel = [[UILabel alloc] init];
     _lifetimeBytesLabel.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightMedium];
-    _lifetimeBytesLabel.textColor = [UIColor secondaryLabelColor];
+    _lifetimeBytesLabel.textColor = [PPTheme secondaryTextColor];
     _lifetimeBytesLabel.textAlignment = NSTextAlignmentCenter;
     [_metricsStackView addArrangedSubview:_lifetimeBytesLabel];
     
@@ -105,7 +106,7 @@
     _commitPurgesButton.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
     _commitPurgesButton.layer.cornerRadius = 12.0;
     _commitPurgesButton.clipsToBounds = YES;
-    _commitPurgesButton.backgroundColor = [UIColor systemRedColor];
+    _commitPurgesButton.backgroundColor = [PPTheme purgeActionColor];
     [_commitPurgesButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     _commitPurgesButton.translatesAutoresizingMaskIntoConstraints = NO;
     _commitPurgesButton.hidden = YES;
@@ -117,7 +118,7 @@
     _restartButton.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
     _restartButton.layer.cornerRadius = 12.0;
     _restartButton.clipsToBounds = YES;
-    _restartButton.backgroundColor = [UIColor systemBlueColor];
+    _restartButton.backgroundColor = [PPTheme keepActionColor];
     [_restartButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [_restartButton setTitle:@"Review From Beginning" forState:UIControlStateNormal];
     _restartButton.translatesAutoresizingMaskIntoConstraints = NO;

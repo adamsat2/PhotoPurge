@@ -8,6 +8,7 @@
 #import "PPCompletionView.h"
 #import "PPPermissionView.h"
 #import "PPStorageManager.h"
+#import "PPTheme.h"
 #import <Photos/Photos.h>
 
 typedef NS_ENUM(NSInteger, PPSwipeActionType) {
@@ -62,6 +63,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 @property (nonatomic, strong, nullable) PHAssetCollection *selectedCustomAlbum;
 @property (nonatomic, strong) UIBarButtonItem *filterBarButton;
 @property (nonatomic, strong) UIBarButtonItem *storageBarButtonItem;
+@property (nonatomic, strong) UIView *storageContainerView;
 @property (nonatomic, strong) UILabel *storagePillLabel;
 
 @end
@@ -70,7 +72,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemGray6Color];
+    self.view.backgroundColor = [PPTheme canvasBackgroundColor];
     self.title = @"PhotoPurge";
     
     self.currentFilterType = PPPhotoFilterTypeAllPhotos;
@@ -97,46 +99,49 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 }
 
 - (void)setupStorageIndicator {
-    UIView *containerView = [[UIView alloc] initWithFrame:CGRectZero];
-    containerView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.storageContainerView = [[UIView alloc] initWithFrame:CGRectZero];
+    self.storageContainerView.translatesAutoresizingMaskIntoConstraints = NO;
     
-    containerView.backgroundColor = [UIColor clearColor];
-    containerView.layer.cornerRadius = 14.0;
-    containerView.layer.borderWidth = 1.0;
-    containerView.layer.borderColor = [[UIColor separatorColor] CGColor];
-    containerView.clipsToBounds = YES;
+    self.storageContainerView.backgroundColor = [PPTheme pillBackgroundColor];
+    self.storageContainerView.layer.cornerRadius = 14.0;
+    self.storageContainerView.layer.borderWidth = 1.0;
+    self.storageContainerView.layer.borderColor = [PPTheme pillBorderColor].CGColor;
+    self.storageContainerView.clipsToBounds = YES;
     
     UIStackView *stack = [[UIStackView alloc] init];
     stack.axis = UILayoutConstraintAxisHorizontal;
     stack.alignment = UIStackViewAlignmentCenter;
     stack.spacing = 5.0;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [containerView addSubview:stack];
+    [self.storageContainerView addSubview:stack];
     
     // Storage icon
     UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:11 weight:UIImageSymbolWeightSemibold];
     UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"internaldrive" withConfiguration:config]];
-    iconView.tintColor = [UIColor secondaryLabelColor];
+    iconView.tintColor = [PPTheme pillTextColor];
     iconView.contentMode = UIViewContentModeScaleAspectFit;
     [stack addArrangedSubview:iconView];
     
     // Formatted text label
     self.storagePillLabel = [[UILabel alloc] init];
     self.storagePillLabel.font = [UIFont monospacedDigitSystemFontOfSize:12 weight:UIFontWeightSemibold];
-    self.storagePillLabel.textColor = [UIColor labelColor];
+    self.storagePillLabel.textColor = [PPTheme pillTextColor];
     [self updateStoragePillText];
     [stack addArrangedSubview:self.storagePillLabel];
     
     // Internal padding to preserve pill structure
     [NSLayoutConstraint activateConstraints:@[
-        [stack.topAnchor constraintEqualToAnchor:containerView.topAnchor constant:4.0],
-        [stack.bottomAnchor constraintEqualToAnchor:containerView.bottomAnchor constant:-4.0],
-        [stack.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:10.0],
-        [stack.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor constant:-10.0]
+        [stack.topAnchor constraintEqualToAnchor:self.storageContainerView.topAnchor constant:4.0],
+        [stack.bottomAnchor constraintEqualToAnchor:self.storageContainerView.bottomAnchor constant:-4.0],
+        [stack.leadingAnchor constraintEqualToAnchor:self.storageContainerView.leadingAnchor constant:10.0],
+        [stack.trailingAnchor constraintEqualToAnchor:self.storageContainerView.trailingAnchor constant:-10.0]
     ]];
     
-    self.storageBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:containerView];
+    self.storageBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:self.storageContainerView];
     self.navigationItem.leftBarButtonItem = self.storageBarButtonItem;
+    
+    [self registerForTraitChanges:@[[UITraitUserInterfaceStyle class]]
+                       withAction:@selector(updatePillAppearanceForTraitChanges)];
 }
 
 - (void)updateStoragePillText {
@@ -147,6 +152,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 - (void)setupFilterBarButton {
     self.filterBarButton = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"line.3.horizontal.decrease.circle"]
                                                              menu:[self buildFilterMenu]];
+    self.filterBarButton.tintColor = [PPTheme navigationTintColor];
     self.navigationItem.rightBarButtonItem = self.filterBarButton;
 }
 
@@ -358,6 +364,10 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
 - (void)applicationWillEnterForeground {
     // Re-check permission if user altered settings while in background
     [self evaluatePhotoAuthorizationStatus];
+}
+
+- (void)updatePillAppearanceForTraitChanges {
+    self.storageContainerView.layer.borderColor = [PPTheme pillBorderColor].CGColor;
 }
 
 - (void)applyFilter:(PPPhotoFilterType)filterType {
@@ -640,7 +650,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
     
     // Common shadow configuration helper
     void (^applyButtonStyling)(UIButton *, CGFloat) = ^(UIButton *btn, CGFloat diameter) {
-        btn.backgroundColor = [UIColor whiteColor];
+        btn.backgroundColor = [PPTheme actionButtonBackgroundColor];
         btn.layer.cornerRadius = diameter / 2.0;
         btn.layer.shadowColor = [UIColor blackColor].CGColor;
         btn.layer.shadowOpacity = 0.14;
@@ -648,56 +658,56 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
         btn.layer.shadowOffset = CGSizeMake(0, 3);
     };
     
-    // Undo Button (middle up, orange)
+    // Undo Button (middle up, warm amber)
     self.undoButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.undoButton.frame = CGRectMake(centerX - (secondaryDiameter / 2.0),
                                        centerY - verticalOffset - (secondaryDiameter / 2.0),
                                        secondaryDiameter,
                                        secondaryDiameter);
     applyButtonStyling(self.undoButton, secondaryDiameter);
-    self.undoButton.tintColor = [UIColor systemOrangeColor];
+    self.undoButton.tintColor = [PPTheme undoActionColor];
     
     UIImageSymbolConfiguration *undoConfig = [UIImageSymbolConfiguration configurationWithPointSize:17 weight:UIImageSymbolWeightBold];
     [self.undoButton setImage:[UIImage systemImageNamed:@"arrow.uturn.backward" withConfiguration:undoConfig] forState:UIControlStateNormal];
     [self.undoButton addTarget:self action:@selector(undoButtonTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.undoButton];
     
-    // Purge Button (left, red X mark icon)
+    // Purge Button (left, vermilion crimson X mark icon)
     self.purgeButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.purgeButton.frame = CGRectMake(centerX - horizontalOffset - (primaryDiameter / 2.0),
                                         centerY - (primaryDiameter / 2.0),
                                         primaryDiameter,
                                         primaryDiameter);
     applyButtonStyling(self.purgeButton, primaryDiameter);
-    self.purgeButton.tintColor = [UIColor systemRedColor];
+    self.purgeButton.tintColor = [PPTheme purgeActionColor];
     
     UIImageSymbolConfiguration *xConfig = [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightHeavy];
     [self.purgeButton setImage:[UIImage systemImageNamed:@"xmark" withConfiguration:xConfig] forState:UIControlStateNormal];
     [self.purgeButton addTarget:self action:@selector(purgeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.purgeButton];
     
-    // Keep Button (right, green checkmark icon)
+    // Keep Button (right, sage emerald checkmark icon)
     self.keepButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.keepButton.frame = CGRectMake(centerX + horizontalOffset - (primaryDiameter / 2.0),
                                        centerY - (primaryDiameter / 2.0),
                                        primaryDiameter,
                                        primaryDiameter);
     applyButtonStyling(self.keepButton, primaryDiameter);
-    self.keepButton.tintColor = [UIColor systemGreenColor];
+    self.keepButton.tintColor = [PPTheme keepActionColor];
     
     UIImageSymbolConfiguration *checkConfig = [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightBold];
     [self.keepButton setImage:[UIImage systemImageNamed:@"checkmark" withConfiguration:checkConfig] forState:UIControlStateNormal];
     [self.keepButton addTarget:self action:@selector(keepButtonTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.keepButton];
     
-    // Confirm button (middle down, red trash icon)
+    // Confirm button (middle down, vermilion crimson trash icon)
     self.confirmDeleteButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.confirmDeleteButton.frame = CGRectMake(centerX - (secondaryDiameter / 2.0),
                                                 centerY + verticalOffset - (secondaryDiameter / 2.0),
                                                 secondaryDiameter,
                                                 secondaryDiameter);
     applyButtonStyling(self.confirmDeleteButton, secondaryDiameter);
-    self.confirmDeleteButton.tintColor = [UIColor systemRedColor];
+    self.confirmDeleteButton.tintColor = [PPTheme purgeActionColor];
     
     UIImageSymbolConfiguration *trashConfig = [UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightSemibold];
     [self.confirmDeleteButton setImage:[UIImage systemImageNamed:@"trash.fill" withConfiguration:trashConfig] forState:UIControlStateNormal];
@@ -710,7 +720,7 @@ typedef NS_ENUM(NSInteger, PPSwipeActionType) {
                                                                      -(badgeSize / 2.0) + 1.0,
                                                                      badgeSize,
                                                                      badgeSize)];
-    self.trashBadgeLabel.backgroundColor = [UIColor systemRedColor];
+    self.trashBadgeLabel.backgroundColor = [PPTheme purgeActionColor];
     self.trashBadgeLabel.textColor = [UIColor whiteColor];
     self.trashBadgeLabel.font = [UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
     self.trashBadgeLabel.textAlignment = NSTextAlignmentCenter;

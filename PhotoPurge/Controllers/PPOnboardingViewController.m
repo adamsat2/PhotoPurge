@@ -5,6 +5,7 @@
 
 #import "PPOnboardingViewController.h"
 #import "PPSwipeViewController.h"
+#import "PPTheme.h"
 #import <Photos/Photos.h>
 
 @interface PPOnboardingViewController ()
@@ -19,7 +20,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
+    self.view.backgroundColor = [PPTheme canvasBackgroundColor];
     self.denialCount = 0;
     
     [self setupUI];
@@ -28,15 +29,22 @@
 
 - (void)setupUI {
     // Initialize Label
-    self.messageLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 200, self.view.bounds.size.width - 40, 100)];
+    self.messageLabel = [[UILabel alloc] initWithFrame:CGRectMake(24, 200, self.view.bounds.size.width - 48, 100)];
     self.messageLabel.textAlignment = NSTextAlignmentCenter;
     self.messageLabel.numberOfLines = 0;
+    self.messageLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightMedium];
+    self.messageLabel.textColor = [PPTheme primaryTextColor];
     self.messageLabel.text = @"Welcome to PhotoPurge. We need access to your library to begin.";
     [self.view addSubview:self.messageLabel];
     
     // Initialize Button
     self.actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.actionButton.frame = CGRectMake(50, 320, self.view.bounds.size.width - 100, 50);
+    self.actionButton.frame = CGRectMake(48, 320, self.view.bounds.size.width - 96, 50);
+    self.actionButton.backgroundColor = [PPTheme undoActionColor];
+    [self.actionButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    self.actionButton.titleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold];
+    self.actionButton.layer.cornerRadius = 14.0;
+    self.actionButton.clipsToBounds = YES;
     [self.actionButton setTitle:@"Grant Access" forState:UIControlStateNormal];
     
     // Add target-action for button tap

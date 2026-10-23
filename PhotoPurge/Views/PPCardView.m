@@ -5,6 +5,7 @@
 
 #import "PPCardView.h"
 #import "PPPlayerView.h"
+#import "PPTheme.h"
 #import <PhotosUI/PhotosUI.h>
 #import <AVFoundation/AVFoundation.h>
 
@@ -50,7 +51,7 @@
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
-        self.backgroundColor = [UIColor whiteColor];
+        self.backgroundColor = [PPTheme cardSurfaceColor];
         self.isMuted = YES;
         
         // Card styling
@@ -119,13 +120,13 @@
 #pragma mark - Badge Setup
 
 - (void)setupBadges {
-    // Keep Badge (Top-Left, Green, slight counter-clockwise tilt)
+    // Keep Badge (Top-Left, Sage Emerald, slight counter-clockwise tilt)
     _keepBadgeLabel = [[UILabel alloc] initWithFrame:CGRectMake(24.0, 24.0, 110.0, 44.0)];
     _keepBadgeLabel.text = @"KEEP";
     _keepBadgeLabel.textAlignment = NSTextAlignmentCenter;
     _keepBadgeLabel.font = [UIFont systemFontOfSize:22.0 weight:UIFontWeightHeavy];
-    _keepBadgeLabel.textColor = [UIColor systemGreenColor];
-    _keepBadgeLabel.layer.borderColor = [UIColor systemGreenColor].CGColor;
+    _keepBadgeLabel.textColor = [PPTheme keepActionColor];
+    _keepBadgeLabel.layer.borderColor = [PPTheme keepActionColor].CGColor;
     _keepBadgeLabel.layer.borderWidth = 3.0;
     _keepBadgeLabel.layer.cornerRadius = 8.0;
     _keepBadgeLabel.clipsToBounds = YES;
@@ -133,14 +134,14 @@
     _keepBadgeLabel.alpha = 0.0;
     [self addSubview:_keepBadgeLabel];
     
-    // Delete Badge (Top-Right, Red, slight clockwise tilt)
+    // Delete Badge (Top-Right, Vermilion Crimson, slight clockwise tilt)
     CGFloat cardWidth = self.bounds.size.width;
     _deleteBadgeLabel = [[UILabel alloc] initWithFrame:CGRectMake(cardWidth - 110.0 - 24.0, 24.0, 110.0, 44.0)];
     _deleteBadgeLabel.text = @"PURGE";
     _deleteBadgeLabel.textAlignment = NSTextAlignmentCenter;
     _deleteBadgeLabel.font = [UIFont systemFontOfSize:22.0 weight:UIFontWeightHeavy];
-    _deleteBadgeLabel.textColor = [UIColor systemRedColor];
-    _deleteBadgeLabel.layer.borderColor = [UIColor systemRedColor].CGColor;
+    _deleteBadgeLabel.textColor = [PPTheme purgeActionColor];
+    _deleteBadgeLabel.layer.borderColor = [PPTheme purgeActionColor].CGColor;
     _deleteBadgeLabel.layer.borderWidth = 3.0;
     _deleteBadgeLabel.layer.cornerRadius = 8.0;
     _deleteBadgeLabel.clipsToBounds = YES;
@@ -148,6 +149,14 @@
     _deleteBadgeLabel.alpha = 0.0;
     _deleteBadgeLabel.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
     [self addSubview:_deleteBadgeLabel];
+    
+    [self registerForTraitChanges:@[[UITraitUserInterfaceStyle class]]
+                       withAction:@selector(updateBadgeBordersForTraitChanges)];
+}
+
+- (void)updateBadgeBordersForTraitChanges {
+    self.keepBadgeLabel.layer.borderColor = [PPTheme keepActionColor].CGColor;
+    self.deleteBadgeLabel.layer.borderColor = [PPTheme purgeActionColor].CGColor;
 }
 
 #pragma mark - Metadata Pill Setup
@@ -501,14 +510,14 @@
                 CGFloat progress = fmin(translation.x / threshold, 1.0);
                 self.keepBadgeLabel.alpha = progress;
                 self.deleteBadgeLabel.alpha = 0.0;
-                self.colorOverlayView.backgroundColor = [UIColor systemGreenColor];
+                self.colorOverlayView.backgroundColor = [PPTheme keepActionColor];
                 self.colorOverlayView.alpha = progress * maxOverlayAlpha;
             } else if (translation.x < 0) {
                 // Swiping Left: Show Purge badge, hide Keep badge
                 CGFloat progress = fmin(fabs(translation.x) / threshold, 1.0);
                 self.deleteBadgeLabel.alpha = progress;
                 self.keepBadgeLabel.alpha = 0.0;
-                self.colorOverlayView.backgroundColor = [UIColor systemRedColor];
+                self.colorOverlayView.backgroundColor = [PPTheme purgeActionColor];
                 self.colorOverlayView.alpha = progress * maxOverlayAlpha;
             } else {
                 self.keepBadgeLabel.alpha = 0.0;

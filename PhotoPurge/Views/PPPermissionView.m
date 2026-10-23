@@ -4,6 +4,7 @@
 //
 
 #import "PPPermissionView.h"
+#import "PPTheme.h"
 
 @interface PPPermissionView ()
 
@@ -27,7 +28,7 @@
 }
 
 - (void)setupCardAppearance {
-    self.backgroundColor = [UIColor systemBackgroundColor];
+    self.backgroundColor = [PPTheme cardSurfaceColor];
     self.layer.cornerRadius = 16.0;
     self.layer.shadowColor = [UIColor blackColor].CGColor;
     self.layer.shadowOpacity = 0.12;
@@ -46,7 +47,7 @@
     // Title label
     _titleLabel = [[UILabel alloc] init];
     _titleLabel.font = [UIFont systemFontOfSize:24 weight:UIFontWeightBold];
-    _titleLabel.textColor = [UIColor labelColor];
+    _titleLabel.textColor = [PPTheme primaryTextColor];
     _titleLabel.textAlignment = NSTextAlignmentCenter;
     _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:_titleLabel];
@@ -54,7 +55,7 @@
     // Description label
     _descriptionLabel = [[UILabel alloc] init];
     _descriptionLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
-    _descriptionLabel.textColor = [UIColor secondaryLabelColor];
+    _descriptionLabel.textColor = [PPTheme secondaryTextColor];
     _descriptionLabel.textAlignment = NSTextAlignmentCenter;
     _descriptionLabel.numberOfLines = 0;
     _descriptionLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -98,24 +99,24 @@
     switch (state) {
         case PPPermissionViewStatePrompt: {
             self.iconImageView.image = [UIImage systemImageNamed:@"photo.stack.fill" withConfiguration:config];
-            self.iconImageView.tintColor = [UIColor systemBlueColor];
+            self.iconImageView.tintColor = [PPTheme undoActionColor];
             self.titleLabel.text = @"Photo Access Needed";
             self.descriptionLabel.text = @"PhotoPurge requires access to your library to help review, organize, and delete unwanted photos.";
             
             [self.actionButton setTitle:@"Continue" forState:UIControlStateNormal];
-            self.actionButton.backgroundColor = [UIColor systemBlueColor];
+            self.actionButton.backgroundColor = [PPTheme undoActionColor];
             [self.actionButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
             break;
         }
         case PPPermissionViewStateDenied: {
             self.iconImageView.image = [UIImage systemImageNamed:@"exclamationmark.triangle.fill" withConfiguration:config];
-            self.iconImageView.tintColor = [UIColor systemOrangeColor];
+            self.iconImageView.tintColor = [PPTheme purgeActionColor];
             self.titleLabel.text = @"Access Restricted";
             self.descriptionLabel.text = @"Photo access has been denied. To use PhotoPurge, please enable Photo Library permissions in iOS Settings.";
             
             [self.actionButton setTitle:@"Open Settings" forState:UIControlStateNormal];
-            self.actionButton.backgroundColor = [UIColor systemGrayColor];
-            [self.actionButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+            self.actionButton.backgroundColor = [PPTheme secondarySurfaceColor];
+            [self.actionButton setTitleColor:[PPTheme primaryTextColor] forState:UIControlStateNormal];
             break;
         }
     }

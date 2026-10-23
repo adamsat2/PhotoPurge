@@ -4,6 +4,7 @@
 //
 
 #import "AppDelegate.h"
+#import "PPTheme.h"
 
 @interface AppDelegate ()
 
@@ -13,7 +14,7 @@
 
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    // Override point for customization after application launch.
+    [PPTheme applyAppearance];
     return YES;
 }
 
